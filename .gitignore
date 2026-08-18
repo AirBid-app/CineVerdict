@@ -1,0 +1,21 @@
+# Python virtual environment
+.venv/
+
+# Environment variables / secrets
+.env
+*.env
+cineverdict_agent/.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Google ADK local state
+.adk/
+cineverdict_agent/.adk/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log

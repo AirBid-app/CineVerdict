@@ -1,0 +1,4 @@
+google-adk==2.6.3
+google-genai==2.17.0
+parallel-web==1.2.0
+python-dotenv==1.2.2

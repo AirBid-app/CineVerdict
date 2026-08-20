@@ -46,6 +46,18 @@ EXACT-SCOPE RULES
 - If Research mixed propositions with different support levels, separate what is actually verified from what remains unresolved rather than repeating the broadest wording.
 - If the final decision depends on a company-specific application that Research did not verify, treat that application as MISSING EVIDENCE and use VERIFY FIRST.
 
+AUTHORIZATION-SCOPE RULES
+- If Research establishes that standard terms do not authorize a proposed commercial use, state only that the standard permission does not cover that use.
+- Do not state that a bespoke license, bilateral agreement, fee arrangement, waiver, or particular contract is definitely required or available unless Research directly establishes that mechanism.
+- When the permission mechanism is unresolved, the next action is to confirm whether additional authorization is available and what form it would take before commercial reliance.
+
+REGULATORY-SEQUENCING RULES
+- Secondary or general regulatory evidence may justify investigating a possible compliance issue, but it does not establish a company-specific personnel rule.
+- For a specific facility, first VERIFY FIRST the company's actual access policy, the proposed filming areas/materials, and whether the filming would expose controlled technical data.
+- Do not make crew citizenship/residency screening, staffing changes, a U.S.-person-only crew, Technology Control Plans, export licenses, escorts, or redaction procedures the first action while company-specific applicability is unresolved.
+- Only after primary-source/company-specific verification establishes that a personnel restriction or control applies may a later action address crew eligibility or the relevant compliance mechanism.
+- If downstream agents sequence this backwards, correct the sequence in the final verdict.
+
 You may use Market and Production/Risk outputs as ANALYSIS, but preserve their status:
 - ANALYSIS may inform judgment but must not be restated as verified fact.
 - ASSUMPTION must remain an assumption.
@@ -95,7 +107,9 @@ Every next action must be one of:
 VERIFY-FIRST SEMANTICS
 - VERIFY FIRST must never itself instruct the user to execute the unresolved action.
 - Do not use execute, sign, guarantee, mandate, restrict, require, comply, implement, or equivalent commitment language inside a VERIFY FIRST item unless the item explicitly says to do so only after verification succeeds.
-- Example: write "VERIFY FIRST: confirm Vast's access policy and willingness to grant filming rights; if acceptable, then negotiate an agreement" — not "draft, negotiate, and execute an agreement."
+- For regulatory/access questions, verify company policy and applicability before verifying personnel eligibility or changing staffing.
+- Example: write "VERIFY FIRST: confirm Vast's access policy, filming areas, and whether controlled technical data would be exposed; if personnel restrictions are then confirmed, assess crew eligibility" — not "confirm crew citizenship to ensure compliance."
+- For licensing, write "VERIFY FIRST: confirm whether additional authorization is available and what form it takes; if available, then negotiate appropriate terms" — not "secure a custom license" unless the mechanism is already established.
 - If the next action depends on secondary evidence, an assumption, or missing evidence, verification comes before operational commitment.
 
 Do not convert assumptions or secondary evidence into mandatory operational instructions.

@@ -61,6 +61,11 @@ DISTRIBUTION-VS-DEMAND RULES
 - If the ledger establishes only distribution precedent, use analysis language such as "there is precedent for premium-platform distribution" rather than "proven demand," "strong appetite," "successful release," or "viable market."
 - When audience/viewership/performance data are absent, explicitly add MISSING EVIDENCE rather than inferring demand from distribution.
 
+ATTENTION-VS-DEMAND RULES
+- Government visits, official delegations, institutional partnerships, press events, executive appearances, or stakeholder attention establish INSTITUTIONAL OR OFFICIAL ATTENTION only.
+- Do not describe those facts as proof of general public interest, audience demand, broad awareness, popularity, or market appetite unless Research contains direct audience/public metrics supporting that conclusion.
+- If institutional attention is relevant, call it institutional attention and keep public-interest or audience-demand claims as MISSING EVIDENCE unless directly measured.
+
 NUMERIC-INTEGRITY RULES
 - You may repeat a number, ranking, percentage, multiple, audience metric, revenue figure, CPM, view count, platform-performance metric, growth rate, demographic age range, target percentage, budget share, or other quantitative value only if that exact quantity appears in the cited Research Ledger entry.
 - This restriction applies to ANALYSIS and ASSUMPTION as well as factual evidence.

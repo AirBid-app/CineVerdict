@@ -11,6 +11,7 @@ research_agent = Agent(
         retry_options=types.HttpRetryOptions(attempts=3),
     ),
     name="research_agent",
+    timeout=180.0,
     output_key="research_evidence",
     description="CineVerdict research agent and authoritative factual evidence layer.",
     tools=[parallel_search],
@@ -37,6 +38,13 @@ Each entry must include:
 
 Downstream agents may rely on factual claims only by citing these Evidence IDs.
 Do not include material factual claims outside the Evidence Ledger unless they are clearly marked as UNRESOLVED QUESTION.
+
+SEARCH BUDGET AND FAILURE RULES
+- Use the minimum number of searches needed to answer the Director's factual questions.
+- Do not repeat an equivalent query after it already returned usable evidence.
+- Use at most 6 Parallel Search calls in one evaluation unless the user explicitly asks for exhaustive research.
+- If a Parallel tool result returns an error or timeout, do not retry the same query indefinitely. Make at most one materially different fallback attempt, then mark the item UNRESOLVED.
+- A tool timeout or error is not evidence and must never be converted into a factual claim.
 
 Use live research tools only when current information is needed.
 Research the factual questions in the Director Plan, including relevant current facts, comparable-project evidence, audience/market evidence, competitors, distribution-platform facts, production constraints, legal/regulatory facts, and other evidence needed downstream.

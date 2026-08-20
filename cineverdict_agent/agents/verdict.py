@@ -53,20 +53,22 @@ GO only when material blockers are adequately addressed. MODIFY when viable afte
 
 NEXT ACTION CLASSIFICATION
 Every action must be one of:
-- SUPPORTED ACTION [E#]: the PRIMARY-SOURCE VERIFIED evidence directly justifies the action itself.
+- SUPPORTED ACTION [E#]: the PRIMARY-SOURCE VERIFIED evidence directly dictates or uniquely justifies the action itself.
 - VERIFY FIRST [E# or MISSING EVIDENCE]: investigate/confirm before commitment.
-- STRATEGIC ACTION [based on E#...]: a non-factual planning recommendation derived from supported analysis.
-Historical schedule movement may support STRATEGIC schedule flexibility, but not a specific buffer/reserve/slack period as a SUPPORTED ACTION unless directly evidenced.
+- STRATEGIC ACTION [based on E#...]: a non-factual planning recommendation derived from supported context.
+A verified date may support using that date as the current planning baseline, but choices about when to shoot, release, contract crew, add slack, or align post-production are STRATEGIC unless the evidence directly requires them.
+Historical schedule movement may support STRATEGIC schedule flexibility, but not a specific buffer/reserve/slack period as SUPPORTED ACTION.
 VERIFY FIRST must not order execution of the unresolved action.
 
 FINAL SELF-AUDIT
 Before output:
 1. Re-check every factual clause against the cited excerpt.
-2. Remove any unsupported clause even if Research/Market/Production repeated it.
-3. Re-check every causal statement; if evidence only establishes correlation/context, soften to strategy/hypothesis or remove.
+2. Remove any unsupported clause even if upstream agents repeated it.
+3. Re-check every causal statement; if evidence only establishes context, soften to strategy/hypothesis or remove.
 4. Re-check rights: publicly available != public domain/commercially reusable.
 5. Re-check legal scope: general export-control evidence != company-specific filming/personnel rule.
-6. Ensure only you issue GO/MODIFY/NO-GO.
+6. Re-check action labels: contextual evidence does not automatically make a planning choice SUPPORTED ACTION.
+7. Ensure only you issue GO/MODIFY/NO-GO.
 
 Required output:
 CINEVERDICT FINAL EVALUATION

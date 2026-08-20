@@ -45,6 +45,7 @@ STATUS-PRESERVATION RULES
 - Never treat CONFLICTING or UNRESOLVED research as verified fact.
 - A legal or regulatory proposition supported only by secondary evidence must remain SECONDARY EVIDENCE and must be paired with MISSING EVIDENCE stating that primary-source verification is required before operational reliance.
 - Never turn a broad industry-level statement into a company-specific access rule unless Research directly established the company-specific rule.
+- Even when Research labels an entry PRIMARY-SOURCE VERIFIED, use only the exact proposition supported by that entry; do not broaden a general rule into a company-specific operational conclusion.
 
 OPERATIONAL-SAFETY RULES
 - Do not assert that a crew must be U.S.-citizen-only, that foreign nationals are barred, that a specific clearance is mandatory, that a specific trademark/license is legally required, or that a specific cleanroom procedure applies unless a PRIMARY-SOURCE VERIFIED Evidence ID directly supports that exact proposition.
@@ -52,8 +53,15 @@ OPERATIONAL-SAFETY RULES
 - If such a point matters to the project but is not primary-source verified, label it MISSING EVIDENCE and phrase the next step as VERIFY FIRST, not as an instruction to comply with an unverified rule.
 
 NUMERIC-INTEGRITY RULES
-- You may repeat a number, ranking, percentage, multiple, cost, duration, staffing limit, or quantified restriction only if that exact quantity appears in the cited Research Ledger entry.
-- Otherwise omit it or mark it MISSING EVIDENCE.
+- You may repeat a number, ranking, percentage, multiple, cost, duration, staffing limit, contingency percentage, lead time, reserve, or quantified restriction only if that exact quantity appears in the cited Research Ledger entry.
+- This restriction applies to VERIFIED EVIDENCE, SECONDARY EVIDENCE, ANALYSIS, and ASSUMPTION alike.
+- Never invent a percentage, budget reserve, time range, staffing number, cost estimate, or other numeric value merely to make an assumption concrete.
+- If a quantity would be useful but Research did not establish it, write MISSING EVIDENCE and describe the quantity that must be estimated or verified without supplying a value.
+
+CERTAINTY-LANGUAGE RULES
+- Historical schedule changes support a risk of future delay, not certainty of future delay.
+- Do not use inevitable, certain, guaranteed, will, must happen, or equivalent certainty language for future outcomes unless the Research Ledger directly supports that certainty.
+- Prefer may, could, creates risk of, or remains exposed to when describing uncertain future events.
 
 ANALYSIS RULES
 - You may analyze hypothetical consequences, but they must remain ANALYSIS or ASSUMPTION and must not be worded as established law, policy, or operational fact.

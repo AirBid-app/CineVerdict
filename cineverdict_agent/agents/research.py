@@ -47,8 +47,10 @@ EXACT-SCOPE VERIFICATION RULES
 AUTHORIZATION-SCOPE RULES
 - If a primary source says standard terms do not authorize a proposed commercial use, report only that the standard permission does not cover that use.
 - Do not infer that a specific bespoke license, bilateral agreement, fee structure, waiver, or contract form is legally required unless the source directly says so.
-- When the mechanism for obtaining additional permission is not stated, write that additional authorization may be required and mark the exact authorization mechanism, terms, and availability as UNRESOLVED.
+- When the mechanism for obtaining additional permission is not stated, write that additional authorization may be needed and mark the exact authorization mechanism, terms, and availability as UNRESOLVED.
 - Do not turn a restriction in standard terms into a claim that a particular company is willing to grant an exception.
+- HARD WORDING RULE: when the source only establishes that standard terms exclude commercial use, never write "requires a bilateral agreement", "requires a bespoke license", "requires a custom license", "custom permission is required", or equivalent mechanism-specific wording. Write instead: "the proposed commercial use is not covered by the standard terms; whether additional authorization is available and what form it would take are unresolved."
+- Notes must obey the same rule as Claims. A Notes field may not introduce a stronger permission mechanism than the cited evidence establishes.
 
 REGULATORY-SEQUENCING RULES
 - General or secondary regulatory evidence may establish a possible compliance issue, but it does not establish how a specific company applies that rule to a specific filming request.

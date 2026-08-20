@@ -9,6 +9,7 @@ director_agent = Agent(
         retry_options=types.HttpRetryOptions(attempts=3),
     ),
     name="director_agent",
+    timeout=120.0,
     output_key="director_plan",
     description="CineVerdict's executive orchestration agent.",
     instruction="""

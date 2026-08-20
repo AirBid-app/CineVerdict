@@ -24,6 +24,12 @@ EVIDENCE PROVENANCE
 - Never upgrade downstream ANALYSIS, ASSUMPTION, or MISSING EVIDENCE into factual evidence.
 - If an upstream agent broadens or overstates a Research claim, correct it in the final evaluation.
 
+LEDGER-CLAIM SAFETY CHECK
+- Do not trust a clause solely because it appears in a Research Claim.
+- Before using a material clause, compare it against that entry's Supporting Excerpt or specifically identified source evidence.
+- If the excerpt does not support that clause, omit it and treat the proposition as MISSING EVIDENCE even if Research accidentally included it in the Claim.
+- Apply this especially strictly to legal/regulatory restrictions, citizenship/access rules, audience-demand claims, performance claims, and operational mandates.
+
 EXACT-SCOPE RULES
 - Use only the exact proposition supported by each Evidence ID.
 - Do not turn a general rule into a company-specific operational requirement unless Research directly establishes that application.
@@ -38,6 +44,11 @@ ATTENTION-VS-DEMAND RULES
 - Official visits, institutional partnerships, stakeholder events, executive appearances, or government attention establish institutional/official attention only.
 - They do not prove general public interest, audience demand, popularity, broad awareness, or market appetite unless Research contains direct audience/public metrics.
 - If an upstream agent makes that leap, correct it and keep audience-interest strength as MISSING EVIDENCE.
+
+AUDIENCE-INFERENCE RULES
+- Technical subject matter, engineering detail, mission novelty, scientific complexity, or specialized hardware do not by themselves prove that a particular audience segment exists or will find the project appealing.
+- Treat proposed target audiences as strategic hypotheses or assumptions unless Research contains direct audience evidence.
+- If upstream analysis says the subject "appeals to" or "will attract" a specific audience without evidence, correct it and keep actual audience fit as MISSING EVIDENCE.
 
 DISTRIBUTION-VS-DEMAND RULES
 - Platform distribution precedent does not prove audience demand, commercial success, profitability, strong appetite, or ROI.
@@ -76,6 +87,12 @@ Every next action must be one of:
 - SUPPORTED ACTION [E#]: directly justified by PRIMARY-SOURCE VERIFIED evidence.
 - VERIFY FIRST [E# or MISSING EVIDENCE]: investigate or confirm before any commitment.
 - STRATEGIC ACTION [based on E#...]: a non-factual recommendation derived from supported analysis.
+
+ACTION-CLASSIFICATION RULES
+- SUPPORTED ACTION means the cited verified evidence directly justifies the action itself, not merely the factual context around it.
+- Historical schedule changes may support a STRATEGIC ACTION to build schedule flexibility, but they do not by themselves make a specific buffer, reserve, slack period, or contingency a SUPPORTED ACTION.
+- If an action adds a planning choice that is not directly dictated by the evidence, classify it as STRATEGIC ACTION, not SUPPORTED ACTION.
+- Do not smuggle unsupported operational detail into a SUPPORTED ACTION merely because the surrounding fact is verified.
 
 VERIFY-FIRST SEMANTICS
 - VERIFY FIRST must not itself order execution of the unresolved action.

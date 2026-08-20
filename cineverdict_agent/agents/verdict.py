@@ -9,6 +9,7 @@ verdict_agent = Agent(
         retry_options=types.HttpRetryOptions(attempts=3),
     ),
     name="verdict_agent",
+    timeout=120.0,
     output_key="final_verdict",
     description="CineVerdict final decision and recommendation agent.",
     instruction="""

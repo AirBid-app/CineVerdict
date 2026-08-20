@@ -9,6 +9,7 @@ market_agent = Agent(
         retry_options=types.HttpRetryOptions(attempts=3),
     ),
     name="market_agent",
+    timeout=120.0,
     output_key="market_analysis",
     description="CineVerdict market and audience intelligence agent.",
     instruction="""

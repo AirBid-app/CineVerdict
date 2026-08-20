@@ -36,6 +36,15 @@ Each entry must include:
 - Supporting excerpt or specific supporting evidence
 - Notes on conflicts, limits, or ambiguity when relevant
 
+CLAIM-EXCERPT ENTAILMENT CHECK — REQUIRED BEFORE ASSIGNING STATUS
+Before finalizing every Evidence Ledger entry, compare the Claim sentence proposition-by-proposition against the Supporting Excerpt or specifically identified source evidence.
+- Every factual proposition in the Claim must be directly supported by the Supporting Excerpt or source metadata shown in that same entry.
+- Do not rely on memory, general domain knowledge, a different uncited part of the page, or facts merely suggested by the source title.
+- If the excerpt supports only part of the proposed Claim, narrow the Claim to the supported proposition or split the unsupported portion into a separate UNRESOLVED entry.
+- Secondary-source status does not permit broader wording. A SECONDARY-SOURCE EVIDENCE claim must still be entailed by its quoted supporting evidence.
+- Legal/regulatory claims require especially strict entailment: an excerpt about controlled-information risk or security coordination does not, by itself, prove a citizenship restriction, company-wide access ban, mandatory escort, licensing requirement, or other broader rule.
+- Before output, silently ask: "Could a reader derive every material factual clause of this Claim from the Supporting Excerpt shown here?" If no, rewrite or split the entry.
+
 EXACT-SCOPE VERIFICATION RULES
 - PRIMARY-SOURCE VERIFIED applies only to the exact proposition directly supported by the cited primary-source excerpt or source metadata.
 - Do not broaden a source about export-controlled technical data into a company-specific facility-access rule, citizenship rule, filming ban, clearance requirement, or other operational rule unless the cited primary source directly states that broader proposition.

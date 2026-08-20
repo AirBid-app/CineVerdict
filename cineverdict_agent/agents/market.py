@@ -20,9 +20,10 @@ VERIFIED EVIDENCE [E#] only for PRIMARY-SOURCE VERIFIED; SECONDARY EVIDENCE [E#]
 
 LEDGER CLAUSE RE-VALIDATION — HARD GATE
 Before repeating any factual clause, compare it to that E#'s displayed Supporting Excerpt/metadata, not merely the Research Claim.
-- Repeat only clauses directly entailed by the displayed evidence.
+- Repeat only clauses directly entailed by displayed evidence.
 - If Research accidentally includes an unsupported organization, partnership, regulated object, legal actor, number, status, causal conclusion, or other clause, OMIT it and mark that proposition MISSING EVIDENCE.
 - Preserve status exactly; never upgrade secondary/conflicting/unresolved evidence.
+- Do not rename a supported quantity into a stronger concept: for example, "amount invested in technologies/facilities" is not automatically "company capitalization" or "valuation."
 - For legal/regulatory material, a general statement about export of technology/data does not establish that a particular spacecraft, facility, filming activity, crew, citizenship category, or company policy is controlled.
 
 ANALYSIS IS NOT A FACT ESCAPE HATCH
@@ -43,6 +44,9 @@ Repeat a number/percentage/ranking/amount/date/duration only when that exact qua
 
 CERTAINTY
 Historical precedent supports possibility/risk, not inevitable/certain future outcomes.
+
+FINAL SELF-AUDIT
+For every VERIFIED/SECONDARY bullet, ask whether every noun phrase, organization, number, status, and relationship is visible in the cited excerpt. For every ANALYSIS bullet, remove claims of brand recognition, prominence, stability, audience appeal, or commercial strength unless separately evidenced.
 
 Hard boundaries:
 - No independent research or new facts.

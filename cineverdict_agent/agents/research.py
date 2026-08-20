@@ -44,6 +44,18 @@ EXACT-SCOPE VERIFICATION RULES
 - Source authority alone is not enough: the quoted or specifically identified source evidence must support the scope of the claim as written.
 - When a primary source supports only a general rule and the project needs a company-specific application, verify the general rule separately and list the company-specific application as UNRESOLVED unless directly sourced.
 
+AUTHORIZATION-SCOPE RULES
+- If a primary source says standard terms do not authorize a proposed commercial use, report only that the standard permission does not cover that use.
+- Do not infer that a specific bespoke license, bilateral agreement, fee structure, waiver, or contract form is legally required unless the source directly says so.
+- When the mechanism for obtaining additional permission is not stated, write that additional authorization may be required and mark the exact authorization mechanism, terms, and availability as UNRESOLVED.
+- Do not turn a restriction in standard terms into a claim that a particular company is willing to grant an exception.
+
+REGULATORY-SEQUENCING RULES
+- General or secondary regulatory evidence may establish a possible compliance issue, but it does not establish how a specific company applies that rule to a specific filming request.
+- For company-specific facility access, first verify the company's actual access policy, the areas/materials involved, and whether the proposed filming would expose controlled technical data.
+- Only after that company-specific applicability is established should downstream analysis consider whether personnel citizenship/residency, licensing, Technology Control Plans, escorts, redaction, or other controls are relevant.
+- Do not recommend collecting or screening crew citizenship/residency as the first verification step when company-specific applicability is still unresolved.
+
 STATUS-PRESERVATION RULES
 - PRIMARY-SOURCE VERIFIED means the cited primary source directly supports the specific claim as written.
 - SECONDARY-SOURCE EVIDENCE must never be worded as if it were primary-source verified or universally established.

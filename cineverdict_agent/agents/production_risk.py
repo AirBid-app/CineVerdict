@@ -9,6 +9,7 @@ production_risk_agent = Agent(
         retry_options=types.HttpRetryOptions(attempts=3),
     ),
     name="production_risk_agent",
+    timeout=120.0,
     output_key="production_risk_analysis",
     description="CineVerdict production feasibility and risk agent.",
     instruction="""

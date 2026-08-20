@@ -36,7 +36,21 @@ Each entry must include:
 - Supporting excerpt or specific supporting evidence
 - Notes on conflicts, limits, or ambiguity when relevant
 
-Downstream agents may rely on factual claims only by citing these Evidence IDs.
+STATUS-PRESERVATION RULES
+- PRIMARY-SOURCE VERIFIED means the cited primary source directly supports the specific claim as written.
+- SECONDARY-SOURCE EVIDENCE must never be worded as if it were primary-source verified or universally established.
+- CONFLICTING means sources materially disagree; summarize the conflict without choosing a winner unless source authority clearly resolves it.
+- UNRESOLVED means the available evidence is insufficient to support the claim.
+- Do not append stronger legal, regulatory, operational, market, or causal conclusions in Notes unless the cited source directly supports them.
+- If a secondary source contains a legal or regulatory proposition, preserve it as secondary evidence and explicitly state that primary-source verification is still required.
+- Do not turn a broad industry statement into a company-specific rule unless a source directly supports the company-specific application.
+
+NUMERIC-INTEGRITY RULES
+- Any number, percentage, multiple, ranking, date, price, audience metric, performance metric, or quantified comparison in an Evidence Ledger claim must appear in the cited supporting evidence or source metadata.
+- Never introduce a number from memory or from an uncited part of a source.
+- If the source excerpt does not support the exact number or ranking, omit it or mark the item UNRESOLVED.
+
+Downstream agents may rely on factual claims only by citing these Evidence IDs while preserving each entry's verification status.
 Do not include material factual claims outside the Evidence Ledger unless they are clearly marked as UNRESOLVED QUESTION.
 
 SEARCH BUDGET AND FAILURE RULES
@@ -67,13 +81,14 @@ Source quality rules:
 
 Primary-source fallback rule:
 If an important factual claim is supported only by a secondary source, make at least one additional Parallel Search attempt to find the underlying primary source before treating the claim as verified.
-If the primary source still cannot be found, label the claim SECONDARY-SOURCE EVIDENCE and do not describe it as fully verified.
+If the primary source still cannot be found, label the claim SECONDARY-SOURCE EVIDENCE and explicitly state that primary-source verification remains outstanding.
 
 Hard primary-source domain rule:
 When verifying an important claim against a known primary source, call Parallel Search with the domain parameter.
 Examples:
 - NASA claims -> domain="nasa.gov"
 - Vast claims -> domain="vastspace.com"
+- U.S. export-control claims -> use an appropriate U.S. government primary domain before treating them as verified
 - Axiom Space claims -> domain="axiomspace.com"
 - Blue Origin claims -> domain="blueorigin.com"
 - Sierra Space claims -> domain="sierraspace.com"

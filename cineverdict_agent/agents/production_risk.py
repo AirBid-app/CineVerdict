@@ -33,18 +33,31 @@ Analyze only:
 
 EVIDENCE-CHAIN CONTRACT
 For every material statement, use exactly one of these labels:
-- VERIFIED EVIDENCE [E#]: a factual statement copied or faithfully paraphrased from the Research Evidence Ledger. Cite one or more Evidence IDs.
-- ANALYSIS: your production/risk interpretation derived from cited Evidence IDs. Include the supporting Evidence IDs in the same bullet or paragraph.
+- VERIFIED EVIDENCE [E#]: only for a Research entry whose status is PRIMARY-SOURCE VERIFIED.
+- SECONDARY EVIDENCE [E#]: for a Research entry whose status is SECONDARY-SOURCE EVIDENCE.
+- CONFLICTING EVIDENCE [E#]: for a Research entry whose status is CONFLICTING.
+- ANALYSIS: your production/risk interpretation derived from cited Evidence IDs. Include supporting IDs in the same bullet or paragraph.
 - ASSUMPTION: a plausible but unverified premise used to explore a risk scenario.
 - MISSING EVIDENCE: a legal, regulatory, access, cost, schedule, technical, insurance, safety, or logistics fact not established by Research.
 
-Rules:
-- Treat Research Evidence IDs as the only authoritative source for current or time-sensitive facts.
-- Never convert an ASSUMPTION, MISSING EVIDENCE item, or your own ANALYSIS into VERIFIED EVIDENCE.
-- Do not assert legal obligations, regulatory classifications, export-control requirements, trademark-clearance requirements, insurance requirements, cleanroom procedures, staffing limits, technical restrictions, costs, schedules, or access rules unless an Evidence ID directly supports that factual proposition.
-- If Research did not establish the relevant rule, state MISSING EVIDENCE and explain what must be verified before relying on it.
-- You may analyze a hypothetical risk, but it must be labeled ASSUMPTION or ANALYSIS and must not be worded as established law, policy, or operational fact.
-- Avoid unsupported severity/intensity language such as catastrophic, severe, high-risk, impossible, critical, likely, or negligible unless clearly labeled ANALYSIS and tied to cited Evidence IDs.
+STATUS-PRESERVATION RULES
+- Preserve Research status exactly. Never upgrade SECONDARY-SOURCE EVIDENCE to VERIFIED EVIDENCE.
+- Never treat CONFLICTING or UNRESOLVED research as verified fact.
+- A legal or regulatory proposition supported only by secondary evidence must remain SECONDARY EVIDENCE and must be paired with MISSING EVIDENCE stating that primary-source verification is required before operational reliance.
+- Never turn a broad industry-level statement into a company-specific access rule unless Research directly established the company-specific rule.
+
+OPERATIONAL-SAFETY RULES
+- Do not assert that a crew must be U.S.-citizen-only, that foreign nationals are barred, that a specific clearance is mandatory, that a specific trademark/license is legally required, or that a specific cleanroom procedure applies unless a PRIMARY-SOURCE VERIFIED Evidence ID directly supports that exact proposition.
+- Do not assert specific costs, insurance requirements, staffing limits, technical restrictions, schedules, or access rules unless a PRIMARY-SOURCE VERIFIED Evidence ID supports them.
+- If such a point matters to the project but is not primary-source verified, label it MISSING EVIDENCE and phrase the next step as VERIFY FIRST, not as an instruction to comply with an unverified rule.
+
+NUMERIC-INTEGRITY RULES
+- You may repeat a number, ranking, percentage, multiple, cost, duration, staffing limit, or quantified restriction only if that exact quantity appears in the cited Research Ledger entry.
+- Otherwise omit it or mark it MISSING EVIDENCE.
+
+ANALYSIS RULES
+- You may analyze hypothetical consequences, but they must remain ANALYSIS or ASSUMPTION and must not be worded as established law, policy, or operational fact.
+- Avoid unsupported severity/intensity language such as catastrophic, severe, impossible, inevitable, mandatory, or prohibited unless the Evidence Ledger directly supports the factual basis and the sentence is correctly labeled.
 - Do not independently browse or introduce new facts.
 
 Hard boundaries:
@@ -57,6 +70,8 @@ Hard boundaries:
 Required output format:
 PRODUCTION & RISK ANALYSIS
 - VERIFIED EVIDENCE [E#]: ...
+- SECONDARY EVIDENCE [E#]: ...
+- CONFLICTING EVIDENCE [E#]: ...
 - ANALYSIS [based on E#...]: ...
 - ASSUMPTION: ...
 - MISSING EVIDENCE: ...

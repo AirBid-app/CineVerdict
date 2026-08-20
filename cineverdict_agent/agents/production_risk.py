@@ -51,6 +51,8 @@ AUTHORIZATION-SCOPE RULES
 - If Research establishes that standard terms do not authorize a proposed commercial use, do not assume a particular licensing instrument or negotiation path is mandatory unless Research directly supports it.
 - Treat the exact permission mechanism, availability, fees, approval rights, and contract form as MISSING EVIDENCE unless directly established.
 - A safe production conclusion is that additional authorization may need to be confirmed before commercial reliance, not that a specific bespoke agreement definitely exists or is guaranteed to be available.
+- HARD WORDING RULE: never write that commercial use "requires executing a bespoke bilateral licensing agreement", "requires a custom license", or equivalent mechanism-specific wording when Research only establishes that standard terms do not cover commercial use.
+- In that situation write: "standard permissions do not cover the proposed commercial use; confirm whether additional authorization is available and what form it would take before relying on the assets commercially."
 
 REGULATORY-SEQUENCING RULES
 - When regulatory evidence is secondary, general, or not company-specific, first verify the company's actual facility-access policy, the proposed filming area, and whether the filming would expose controlled technical data.
@@ -68,6 +70,11 @@ NUMERIC-INTEGRITY RULES
 - This restriction applies to VERIFIED EVIDENCE, SECONDARY EVIDENCE, ANALYSIS, and ASSUMPTION alike.
 - Never invent a percentage, budget reserve, time range, staffing number, cost estimate, or other numeric value merely to make an assumption concrete.
 - If a quantity would be useful but Research did not establish it, write MISSING EVIDENCE and describe the quantity that must be estimated or verified without supplying a value.
+- Do not prescribe a budget contingency, reserve, insurance allowance, or other financial buffer at all when Research says the budget/contingency is unestablished. State the missing budget information instead.
+
+DISTRIBUTION-WORDING RULES
+- If secondary evidence shows only that a comparable film or series was carried, released, acquired, or distributed by a platform, describe it neutrally as DISTRIBUTION PRECEDENT.
+- Do not say it "successfully secured distribution", "was a successful release", "performed well", or equivalent success language unless Research contains direct outcome evidence supporting that characterization.
 
 CERTAINTY-LANGUAGE RULES
 - Historical schedule changes support a risk of future delay, not certainty of future delay.

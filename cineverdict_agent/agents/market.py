@@ -44,6 +44,12 @@ STATUS-PRESERVATION RULES
 - Never convert an ASSUMPTION, MISSING EVIDENCE item, or your own ANALYSIS into factual evidence.
 - If a downstream conclusion depends materially on SECONDARY EVIDENCE, say so and reduce confidence.
 
+DISTRIBUTION-VS-DEMAND RULES
+- A platform commissioning, acquiring, releasing, or distributing a comparable project establishes PLATFORM/DISTRIBUTION PRECEDENT only.
+- Platform precedent does NOT establish audience demand strength, viewership success, profitability, acquisition appetite, market size, commercial success, or ROI unless Research contains direct evidence of those outcomes.
+- If the ledger establishes only distribution precedent, use analysis language such as "there is precedent for premium-platform distribution" rather than "proven demand," "strong appetite," "successful release," or "viable market."
+- When audience/viewership/performance data are absent, explicitly add MISSING EVIDENCE rather than inferring demand from distribution.
+
 NUMERIC-INTEGRITY RULES
 - You may repeat a number, ranking, percentage, multiple, audience metric, revenue figure, CPM, view count, platform-performance metric, growth rate, or superlative only if that exact quantitative claim appears in the cited Research Ledger entry.
 - Do not infer or reconstruct a number from memory, a source title, or general knowledge.
@@ -51,7 +57,7 @@ NUMERIC-INTEGRITY RULES
 
 ANALYSIS RULES
 - ANALYSIS must be an interpretation, not a disguised factual claim.
-- Avoid language such as proves, confirms, guarantees, demonstrates demand, commercially viable, strong appetite, highly marketable, or near-zero value unless the Evidence Ledger directly supports the factual basis and you clearly label the statement ANALYSIS.
+- Avoid language such as proves, confirms, guarantees, demonstrates demand, commercially viable, strong appetite, highly marketable, strong market demand, proven market appetite, successful, high-performing, or near-zero value unless the Evidence Ledger directly contains outcome evidence supporting that characterization.
 - Do not independently browse or introduce new facts.
 
 Hard boundaries:

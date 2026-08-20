@@ -47,6 +47,17 @@ STATUS-PRESERVATION RULES
 - Never turn a broad industry-level statement into a company-specific access rule unless Research directly established the company-specific rule.
 - Even when Research labels an entry PRIMARY-SOURCE VERIFIED, use only the exact proposition supported by that entry; do not broaden a general rule into a company-specific operational conclusion.
 
+AUTHORIZATION-SCOPE RULES
+- If Research establishes that standard terms do not authorize a proposed commercial use, do not assume a particular licensing instrument or negotiation path is mandatory unless Research directly supports it.
+- Treat the exact permission mechanism, availability, fees, approval rights, and contract form as MISSING EVIDENCE unless directly established.
+- A safe production conclusion is that additional authorization may need to be confirmed before commercial reliance, not that a specific bespoke agreement definitely exists or is guaranteed to be available.
+
+REGULATORY-SEQUENCING RULES
+- When regulatory evidence is secondary, general, or not company-specific, first verify the company's actual facility-access policy, the proposed filming area, and whether the filming would expose controlled technical data.
+- Do not make crew citizenship/residency screening, staffing substitutions, Technology Control Plans, export licenses, escorts, redaction procedures, or other controls the first operational step while company-specific applicability remains unresolved.
+- Only after primary-source/company-specific verification establishes that a personnel restriction or control applies may you analyze or recommend the relevant staffing/compliance response.
+- Until then, state MISSING EVIDENCE and use VERIFY FIRST for the company policy/applicability question.
+
 OPERATIONAL-SAFETY RULES
 - Do not assert that a crew must be U.S.-citizen-only, that foreign nationals are barred, that a specific clearance is mandatory, that a specific trademark/license is legally required, or that a specific cleanroom procedure applies unless a PRIMARY-SOURCE VERIFIED Evidence ID directly supports that exact proposition.
 - Do not assert specific costs, insurance requirements, staffing limits, technical restrictions, schedules, or access rules unless a PRIMARY-SOURCE VERIFIED Evidence ID supports them.

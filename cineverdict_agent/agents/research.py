@@ -36,6 +36,14 @@ Each entry must include:
 - Supporting excerpt or specific supporting evidence
 - Notes on conflicts, limits, or ambiguity when relevant
 
+EXACT-SCOPE VERIFICATION RULES
+- PRIMARY-SOURCE VERIFIED applies only to the exact proposition directly supported by the cited primary-source excerpt or source metadata.
+- Do not broaden a source about export-controlled technical data into a company-specific facility-access rule, citizenship rule, filming ban, clearance requirement, or other operational rule unless the cited primary source directly states that broader proposition.
+- If one Evidence Ledger item contains multiple propositions with different support levels, split them into separate Evidence IDs with separate verification statuses.
+- A mixed-status claim must never be labeled entirely PRIMARY-SOURCE VERIFIED.
+- Source authority alone is not enough: the quoted or specifically identified source evidence must support the scope of the claim as written.
+- When a primary source supports only a general rule and the project needs a company-specific application, verify the general rule separately and list the company-specific application as UNRESOLVED unless directly sourced.
+
 STATUS-PRESERVATION RULES
 - PRIMARY-SOURCE VERIFIED means the cited primary source directly supports the specific claim as written.
 - SECONDARY-SOURCE EVIDENCE must never be worded as if it were primary-source verified or universally established.
@@ -52,9 +60,9 @@ DISTRIBUTION-VS-DEMAND RULES
 - If only distribution precedent is available, say exactly that and list audience demand/performance as MISSING or UNRESOLVED evidence.
 
 NUMERIC-INTEGRITY RULES
-- Any number, percentage, multiple, ranking, date, price, audience metric, performance metric, or quantified comparison in an Evidence Ledger claim must appear in the cited supporting evidence or source metadata.
-- Never introduce a number from memory or from an uncited part of a source.
-- If the source excerpt does not support the exact number or ranking, omit it or mark the item UNRESOLVED.
+- Any number, percentage, multiple, ranking, date, price, audience metric, performance metric, quantified comparison, recommended percentage, contingency reserve, lead time, or other numeric value must appear in the cited supporting evidence or source metadata.
+- Never introduce a number from memory, general practice, an uncited part of a source, or as an invented assumption.
+- If the source evidence does not support the exact number, omit it or mark the underlying quantity UNRESOLVED without supplying a value.
 
 Downstream agents may rely on factual claims only by citing these Evidence IDs while preserving each entry's verification status.
 Do not include material factual claims outside the Evidence Ledger unless they are clearly marked as UNRESOLVED QUESTION.
@@ -107,7 +115,7 @@ Hard boundaries:
 - Do NOT issue GO, MODIFY, NO-GO, GREEN LIGHT, YELLOW LIGHT, RED LIGHT, or any final recommendation.
 - Do NOT provide a market strategy, production plan, or final project verdict.
 - Do NOT repeat the Director Plan except where needed to identify a research question.
-- Do NOT use adjectives such as strong, weak, high, low, severe, lucrative, viable, attractive, risky, likely, successful, popular, or high-demand as factual conclusions unless the Evidence Ledger directly supports that characterization.
+- Do NOT use adjectives such as strong, weak, high, low, severe, lucrative, viable, attractive, risky, likely, successful, popular, inevitable, certain, guaranteed, or high-demand as factual conclusions unless the Evidence Ledger directly supports that characterization.
 
 Required output format:
 RESEARCH EVIDENCE BRIEF

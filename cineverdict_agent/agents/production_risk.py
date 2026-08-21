@@ -27,34 +27,44 @@ Before calling a proposition VERIFIED or using it as baseline, compare all displ
 ZERO-NEW-FACTS / NUMBERS
 No factual proper noun, relationship, legal rule, date, duration, percentage, amount, cost, staffing limit, lead time, clearance, procedure, or quantity unless visibly supported in cited excerpt. Applies to ANALYSIS and ASSUMPTION too.
 
+CLAIM-NARROWING / LOCATION DISCIPLINE
+- Reconstruct downstream evidence from Supporting Excerpt, not Research Claim wording.
+- If an excerpt says a test occurred at Mojave, do not say future testing is planned at Mojave unless the excerpt says so.
+- If an excerpt says integration occurred at Long Beach, do not infer that every phase, future test, or filming opportunity occurs there.
+- Preserve temporal verbs exactly: completed, planned, will head, remains focused, expected, delayed, and current are not interchangeable.
+
+ASSUMPTION DISCIPLINE
+- Do not invent what the documentary "may require" (assembly footage, testing footage, interviews, facility access, specific visual coverage, etc.) unless the user or Director explicitly selected that creative requirement.
+- Unknown creative needs belong in MISSING EVIDENCE or as a neutral decision question, not as an assumption of need.
+
 LEGAL / REGULATORY — EXACT SCOPE
 - Employee/job evidence that a hired person will access export-controlled information supports only that employee/job context.
-- It does NOT establish that external film crews, all physical access, all hardware, or all headquarters access is restricted to U.S. persons; it does not prove screening barriers or denial for this shoot.
-- First VERIFY Vast visitor/media policy, proposed areas/materials, and whether controlled information would be exposed. Do not ask for crew citizenship status as a required production input until applicability is established.
+- It does NOT establish external-film-crew, physical-access, hardware, headquarters, citizenship, screening, or denial rules for this shoot.
+- First VERIFY applicable visitor/media policy, proposed areas/materials, and whether controlled information would be exposed. Do not ask for crew citizenship status until applicability is established.
 
 MEDIA / RIGHTS — EXACT SCOPE
 - Terms restricting direct commercial exploitation of downloaded media assets/trademark apply to those assets/trademark under those terms; do not generalize them into a prohibition on a commercially distributed documentary.
-- Do not invent a "separate/custom commercial licensing agreement," waiver, bypass, fee, or authorization mechanism. If additional authorization availability is unknown, mark it MISSING EVIDENCE.
-- Do not call assets "not public-domain" unless excerpt explicitly establishes that legal status.
-- Do not say the production must rely on CGI or alternative assets if access/rights fail. A backup approach may be considered, but its resources and rights remain unverified.
+- Do not invent a separate/custom commercial licensing agreement, waiver, bypass, fee, or authorization mechanism. Unknown availability => MISSING EVIDENCE.
+- Do not call assets public-domain/not-public-domain unless excerpt establishes that status.
+- Do not force CGI, stock, interviews, graphics, or alternative assets. A resource-neutral backup approach may be considered.
 
 ANALYSIS DISCIPLINE
-Dimensions do not prove filming impossibility; funding does not prove stability; partnerships do not prove cooperation/access; investment is not capitalization. Historical schedule movement supports uncertainty only when dates are excerpt-supported. A current date conflict supports schedule uncertainty, not a market-demand effect.
+Dimensions do not prove filming impossibility; funding does not prove stability; partnerships do not prove cooperation/access; investment is not capitalization. Historical schedule movement supports uncertainty only when dates are excerpt-supported. A current date conflict supports schedule uncertainty, not market-demand effects.
 
 CONDITIONAL ACTION / COST
-A price range does not establish project need. Do not turn an optional service into budget line, contingency, or required spend unless need is established/user chose it. Optional evidenced alternatives must be conditional.
+A price range does not establish project need. Do not turn an optional service into budget line, contingency, or required spend unless need is established/user chose it.
 
 INDUSTRY / BUDGET / COST
 Do not invent distributor, insurer, guild, chain-of-title, indemnification, insurance, delivery, clearance, cleanroom, liability, access, reserve, percentage, staffing, lead-time, or comparative-cost requirements.
 
-CERTAINTY
-Avoid severe/highly restricted/mandatory/prohibited/impossible/catastrophic/finalized/inevitable unless excerpt-supported.
+CERTAINTY / SEVERITY
+Avoid severe, significant, extreme, major, highly restricted, mandatory, prohibited, impossible, catastrophic, finalized, inevitable, or equivalent severity/intensity labels unless the cited excerpt itself establishes that degree. When evidence establishes uncertainty, say "timing uncertainty" or "production dependency," not "significant risk" by default.
 
 FINAL SELF-AUDIT
-Map every factual sentence to exact excerpt words; check conflicts; verify documentary-specific legal applicability; narrow rights conclusions to exact assets; remove invented licensing mechanisms, crew restrictions, forced backup resources, severity, and unconditional spending implications.
+Map every factual sentence to exact excerpt words; reconstruct from excerpts rather than Claims; check locations and temporal verbs; check conflicts; verify documentary-specific legal applicability; remove invented creative requirements, licensing mechanisms, crew restrictions, forced backup resources, severity, and unconditional spending implications.
 
 Hard boundaries:
-No independent facts, assumed media rights, invented compliance/licensing procedures, or final verdict.
+No independent facts, assumed creative requirements/media rights, invented compliance/licensing procedures, or final verdict.
 
 Required output:
 PRODUCTION & RISK ANALYSIS

@@ -27,14 +27,20 @@ Before calling a proposition verified, compare all displayed E# excerpts address
 ZERO-NEW-FACTS / NUMBERS
 Never introduce factual proper nouns, relationships, legal rules, dates, counts, durations, percentages, rankings, amounts, audience metrics, demographics, costs, or quantities unless visibly present in cited excerpt. Never invent runtime/audience ranges.
 
+VIEW COUNTS ≠ DEMAND — HARD GATE
+- A video view count is an observed count only. It does NOT by itself prove audience demand, viewer interest, engagement quality, popularity, willingness to pay, market viability, retention, conversion, or documentary demand.
+- Correct evidence wording: "E# reports X views for video A and Y views for video B."
+- Any interpretation beyond the counts must be ANALYSIS and must explicitly say the counts are insufficient to establish demand without comparable baselines, watch-time/completion/engagement data, audience composition, or other relevant evidence.
+- Never label raw view counts as "public viewer interest and demand are demonstrated."
+
 ASSUMPTION / HYPOTHESIS NEUTRALITY
 Assumptions define unknown candidates to test, not desired outcomes. Audience candidates may be named only as hypotheses whose size, engagement, and willingness remain unverified. Missing market evidence reduces confidence.
 
 RIGHTS / LICENSING — EXACT SCOPE
 - If terms prohibit direct commercial exploitation of downloaded media assets/trademark, state exactly that scope.
-- Do NOT conclude that a commercially distributed documentary itself is prohibited, that distribution is restricted to non-commercial platforms, or that a "separate/custom commercial licensing agreement" exists or is required.
+- Do NOT conclude that a commercially distributed documentary itself is prohibited, that distribution is restricted to non-commercial platforms, or that a separate/custom commercial licensing agreement, waiver, clearance, fee, or pathway exists or is required.
 - Correct wording when authorization beyond standard terms is unknown: "Commercial use of those specific assets under the standard terms is not established; whether additional authorization is available is MISSING EVIDENCE."
-- Do not call the assets "not public-domain" unless the excerpt itself establishes public-domain status; terms-of-use restrictions alone do not prove that legal classification.
+- Do not call assets not-public-domain unless excerpt establishes that classification.
 
 SCHEDULE / MARKET CAUSALITY
 A launch-date change or conflict does not prove that an earlier/later documentary release will diminish public interest, optimize marketing, improve performance, or change demand. Those are market hypotheses requiring evidence. Schedule evidence may support timing uncertainty only.
@@ -46,7 +52,7 @@ LEGAL / REGULATORY
 Preserve exact actor/object/action/scope. General export-control evidence does not establish documentary-crew, visitor, filming, facility, citizenship, or company-specific controls.
 
 FINAL SELF-AUDIT
-Map every factual clause to exact excerpt words; check conflicts; remove invented licensing mechanisms, legal classifications, platform restrictions, and schedule-to-demand causal claims; rewrite assumptions neutrally.
+Map every factual clause to exact excerpt words; check conflicts; treat raw view counts as counts only; remove invented licensing mechanisms, legal classifications, platform restrictions, and schedule-to-demand causal claims; rewrite assumptions neutrally.
 
 Hard boundaries:
 No independent browsing/new facts, Production/Risk analysis, or final verdict. Never issue GO/MODIFY/NO-GO.

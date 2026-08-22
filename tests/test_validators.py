@@ -900,6 +900,81 @@ class TestValidators(unittest.TestCase):
         # 28. M7A.2 sentence fail-closed remains intact.
         self.assertEqual(fail_closed_on_unsupported_sentences("Factual statement with [UNSUPPORTED] word."), "[Factual proposition unverified due to missing evidence.]")
 
+    def test_m7a9_regression_and_fixtures(self):
+        import io
+        import sys
+        import os
+        from unittest.mock import patch, MagicMock
+        from google.adk.models.llm_response import LlmResponse
+        from google.genai import types
+        from google.adk import Context
+        from cineverdict_agent.agents.validators import (
+            clean_and_validate_hidden_facts,
+            fail_closed_on_unsupported_sentences,
+            split_structural_line,
+            get_normalized_sentence_for_classification,
+            market_after_model_callback,
+            production_risk_after_model_callback,
+            verdict_after_model_callback
+        )
+
+        # Mock context setup for regression
+        mock_ctx = MagicMock()
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = """
+        ### E1
+        - **Supporting Excerpt**:
+        > "Vast Space has official authorization."
+        
+        ### E2
+        - **Supporting Excerpt**:
+        > "The launch campaign begins in autumn."
+        """
+        mock_ctx.session.events = [mock_event_research]
+        mock_callback_context = MagicMock(spec=Context)
+        mock_callback_context.get_invocation_context.return_value = mock_ctx
+
+        # 1. Structural label splitting with bracketed citations
+        line1 = "VERIFIED EVIDENCE [E1]: The source states that the external program has a stated target."
+        line2 = "ANALYSIS [based on E1]: The source establishes the external target."
+        
+        split1 = split_structural_line(line1)
+        self.assertIsNotNone(split1)
+        self.assertEqual(split1[0], "VERIFIED EVIDENCE [E1]: ")
+        self.assertEqual(split1[1], "The source states that the external program has a stated target.")
+        
+        split2 = split_structural_line(line2)
+        self.assertIsNotNone(split2)
+        self.assertEqual(split2[0], "ANALYSIS [based on E1]: ")
+        self.assertEqual(split2[1], "The source establishes the external target.")
+
+        # 2. HTML colon normalization and citation prefix stripping
+        html_line = "* [E2]&#58; Determine whether additional authorization is required."
+        norm_s = get_normalized_sentence_for_classification(html_line)
+        self.assertEqual(norm_s, "Determine whether additional authorization is required.")
+
+        # 3. Sentence-start grammatical capitalization in factual sentences matching analytical substantive words
+        factual_sentence_start_analytical = "Whether the launch happens is unverified."
+        out_start = clean_and_validate_hidden_facts(factual_sentence_start_analytical, set(), ctx=mock_ctx)
+        self.assertNotIn("[UNSUPPORTED]", out_start)
+
+        # 4. Genuine ungrounded proper noun still fails
+        factual_sentence_start_ungrounded = "Acme states that the launch happens."
+        out_ungrounded = clean_and_validate_hidden_facts(factual_sentence_start_ungrounded, set(), ctx=mock_ctx)
+        self.assertIn("[UNSUPPORTED]", out_ungrounded)
+
+        # 5. Verify the entire chain in the callbacks
+        llm_response = LlmResponse(
+            content=types.Content(
+                role="model",
+                parts=[types.Part(text="* [E2]&#58; Determine whether additional authorization is required.")]
+            )
+        )
+        res = verdict_after_model_callback(mock_callback_context, llm_response)
+        self.assertIsNotNone(res)
+        self.assertEqual(res.content.parts[0].text, "* [E2]: Determine whether additional authorization is required.")
+
 
 if __name__ == "__main__":
     unittest.main()

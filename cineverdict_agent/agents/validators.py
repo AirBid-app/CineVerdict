@@ -145,7 +145,7 @@ def get_normalized_sentence_for_classification(sentence: str) -> str:
     
     Retains the original text for output and citation handling.
     """
-    s = sentence.strip()
+    s = sentence.replace("&#58;", ":").strip()
     
     # Define KNOWN_LABELS prefix pattern
     labels_pattern = "|".join(re.escape(label) for label in KNOWN_LABELS)
@@ -163,7 +163,7 @@ def get_normalized_sentence_for_classification(sentence: str) -> str:
         s = re.sub(r'^([ \t]*\[(?:E\d+|MISSING EVIDENCE|based on E\d+|secondary evidence|verified evidence)[^\]]*\]:?\s*)', '', s, flags=re.IGNORECASE)
         
         # 4. Strip known labels, e.g. VERIFY FIRST, SUPPORTED ACTION, ANALYSIS, etc.
-        s = re.sub(r'^([ \t]*(?:' + labels_pattern + r')(?:\*\*|\])?(?:\s*(?::|—|-)\s*|\s*$))', '', s, flags=re.IGNORECASE)
+        s = re.sub(r'^([ \t]*(?:' + labels_pattern + r')(?:\s*\[[^\]]+\])?(?:\*\*|\])?(?:\s*(?::|—|-)\s*|\s*$))', '', s, flags=re.IGNORECASE)
         
         # 5. Strip any leftover punctuation/bold markers and whitespace from the start
         s = re.sub(r'^([ \t]*(?:\*\*|\*|:|\—|-)\s*)', '', s)
@@ -400,8 +400,9 @@ def split_structural_line(line: str) -> tuple[str, str] | None:
     """Detects and splits known structural labels, returning (label_prefix, body) or None."""
     labels_pattern = "|".join(re.escape(label) for label in KNOWN_LABELS)
     # Match structural headers like: "### 1. FINAL VERDICT" or "- **ANALYSIS**:" or "MISSING EVIDENCE:" or "E1 — Claim:"
+    # Also matches labels followed by optional bracketed citation/explanatory suffixes
     pattern = re.compile(
-        r"^([ \t]*(?:#+\s*)?(?:-\s*|\*\s*|\+\s*|\d+\s*\.\s*)?(?:\*\*|\[)?(?:E\d+\s*(?:—|-)\s*)?(?:" + labels_pattern + r")(?:\*\*|\])?(?:\s*(?::|—|-)\s*|\s*$))(.*)$",
+        r"^([ \t]*(?:#+\s*)?(?:-\s*|\*\s*|\+\s*|\d+\s*\.\s*)?(?:\*\*|\[)?(?:E\d+\s*(?:—|-)\s*)?(?:" + labels_pattern + r")(?:\s*\[[^\]]+\])?(?:\*\*|\])?(?:\s*(?::|—|-)\s*|\s*$))(.*)$",
         re.IGNORECASE
     )
     m = pattern.match(line)
@@ -822,6 +823,7 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
     - Validates only body content following the label.
     - Uses conservative morphological variations for checking.
     """
+    text = text.replace("&#58;", ":")
     research_text = get_research_text(ctx) if ctx else ""
     ev_map = get_evidence_excerpts_map(research_text) if research_text else {}
     _trace_log(f"[Stage 4] Evidence-scope construction. Research text length: {len(research_text)}. Evidence map keys: {list(ev_map.keys())}")

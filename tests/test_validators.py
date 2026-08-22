@@ -1432,6 +1432,82 @@ class TestValidators(unittest.TestCase):
         # Neutralized to unverified conditional status
         self.assertIn("unverified", out.lower())
 
+    def test_m7a14_claim_word_support(self):
+        # Create a mock context with a research ledger containing Claims with proper nouns
+        mock_ctx = MagicMock()
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = """
+        E1 — CLAIM: Vast Space is scheduled to launch Haven-1 in 2027.
+        Supporting Excerpt: "We are launching in 2027."
+        """
+        mock_ctx.session.events = [mock_event_research]
+
+        # Validating a factual proposition citing E1 that uses proper nouns ('Vast', 'Space', 'Haven-1') from the Claim
+        line_grounded = "VERIFIED EVIDENCE [E1]: Vast Space is launching Haven-1."
+        output = clean_and_validate_hidden_facts(line_grounded, set(), ctx=mock_ctx)
+        self.assertEqual(output, line_grounded)
+
+        # Negative control: Wrong citation E2 must NOT authorize E1's proper nouns
+        line_wrong_cite = "VERIFIED EVIDENCE [E2]: Vast Space is launching Haven-1."
+        output_wrong_cite = clean_and_validate_hidden_facts(line_wrong_cite, set(), ctx=mock_ctx)
+        self.assertIn("[UNSUPPORTED]", output_wrong_cite)
+
+    def test_m7a14_numeric_and_unit_normalizations(self):
+        # Create a mock context with various numeric formats in excerpts
+        mock_ctx = MagicMock()
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = """
+        E1 — CLAIM: Numeric test
+        Supporting Excerpt: "10.1 m, 45 m³, 14,600 kg. Two weeks to three years."
+        """
+        mock_ctx.session.events = [mock_event_research]
+
+        # 1. Comma-separated equivalence (14,600 vs 14600)
+        line_comma = "VERIFIED EVIDENCE [E1]: The weight is 14600 kg."
+        output_comma = clean_and_validate_hidden_facts(line_comma, set(), ctx=mock_ctx)
+        self.assertEqual(output_comma, line_comma)
+
+        # 2. Superscript normalization (45 m³ vs 45 m3)
+        line_super = "VERIFIED EVIDENCE [E1]: The volume is 45 m3."
+        output_super = clean_and_validate_hidden_facts(line_super, set(), ctx=mock_ctx)
+        self.assertEqual(output_super, line_super)
+
+        # 3. Alphanumeric splitting (10.1m vs 10.1 m)
+        line_alphanumeric = "VERIFIED EVIDENCE [E1]: The length is 10.1m."
+        output_alphanumeric = clean_and_validate_hidden_facts(line_alphanumeric, set(), ctx=mock_ctx)
+        self.assertEqual(output_alphanumeric, line_alphanumeric)
+
+        # 4. Number word mapping (Two weeks / Three years vs 2 weeks / 3 years)
+        line_word_nums = "VERIFIED EVIDENCE [E1]: The duration is 2 weeks to 3 years."
+        output_word_nums = clean_and_validate_hidden_facts(line_word_nums, set(), ctx=mock_ctx)
+        self.assertEqual(output_word_nums, line_word_nums)
+
+        # Negative control: Unsupported/invented number fails
+        line_unsupported_num = "VERIFIED EVIDENCE [E1]: The weight is 99999 kg."
+        output_unsupported_num = clean_and_validate_hidden_facts(line_unsupported_num, set(), ctx=mock_ctx)
+        self.assertIn("[UNSUPPORTED]", output_unsupported_num)
+
+    def test_m7a14_unknown_vs_independence_epistemic_neutralization(self):
+        # 1. Schedule independence based on absence of evidence is neutralized
+        input_schedule = "### ANALYSIS\n\nANALYSIS [based on E1, E2]: The relationship between the external launch schedule and the internal project timeline is completely unknown and independent on the public record."
+        expected_schedule = "### ANALYSIS\n\nANALYSIS [based on E1, E2]: There is no public evidence establishing a relationship, dependency, or independence between the external schedule and the internal project timeline. The relationship remains unknown."
+        output_schedule = make_schedule_conditional(input_schedule)
+        self.assertEqual(output_schedule, expected_schedule)
+
+        # 2. Audience viability independence based on absence of evidence is neutralized
+        input_audience = "### ANALYSIS\n\nBecause the platform and audience demand are unknown, we assume they are independent."
+        expected_audience = "### ANALYSIS\n\nThere is no public evidence establishing a relationship, dependency, or independence between the external market factors and the internal project viability. The relationship remains unknown."
+        output_audience = make_schedule_conditional(input_audience)
+        self.assertEqual(output_audience, expected_audience)
+
+        # 3. Explicitly evidenced independence is NOT neutralized (positive control)
+        # (It does not contain 'unknown', 'unverified', or 'no evidence' keywords)
+        input_evidenced_independence = "### VERIFIED EVIDENCE\n\nSource E1 explicitly states A operates independently of B."
+        output_evidenced_independence = make_schedule_conditional(input_evidenced_independence)
+        self.assertEqual(output_evidenced_independence, input_evidenced_independence)
+
 
 if __name__ == "__main__":
     unittest.main()

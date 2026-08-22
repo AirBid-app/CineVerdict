@@ -14,7 +14,9 @@ from cineverdict_agent.agents.validators import (
     market_after_model_callback,
     production_risk_after_model_callback,
     verdict_after_model_callback,
-    get_allowed_words
+    get_allowed_words,
+    fail_closed_on_unsupported_sentences,
+    neutralize_positive_assumptions
 )
 
 
@@ -375,6 +377,117 @@ class TestValidators(unittest.TestCase):
         self.assertIn("Funding status is unspecified and remains unverified.", out_h1)
         out_h2 = neutralize_positive_assumptions("It is assumed that rights can be obtained.")
         self.assertIn("Rights/authorization remain to be verified.", out_h2)
+
+    def test_m7a5_reproduction_and_closure(self):
+        # 1. Analytical uncertainty sentence survives.
+        out_1_raw = clean_and_validate_hidden_facts("Project-specific commercial viability remains unverified.", set())
+        out_1 = fail_closed_on_unsupported_sentences(out_1_raw)
+        self.assertEqual(out_1, "Project-specific commercial viability remains unverified.")
+
+        out_1b_raw = clean_and_validate_hidden_facts("Whether sufficient audience demand exists remains unknown.", set())
+        out_1b = fail_closed_on_unsupported_sentences(out_1b_raw)
+        self.assertEqual(out_1b, "Whether sufficient audience demand exists remains unknown.")
+
+        # 2. Missing-evidence sentence survives.
+        out_2_raw = clean_and_validate_hidden_facts("Access conditions have not been established.", set())
+        out_2 = fail_closed_on_unsupported_sentences(out_2_raw)
+        self.assertEqual(out_2, "Access conditions have not been established.")
+
+        out_2b_raw = clean_and_validate_hidden_facts("Budget and funding status remain unspecified.", set())
+        out_2b = fail_closed_on_unsupported_sentences(out_2b_raw)
+        self.assertEqual(out_2b, "Budget and funding status remain unspecified.")
+
+        # 3. Recommended verification action survives.
+        out_3_raw = clean_and_validate_hidden_facts("Verify the applicable access conditions before commitment.", set())
+        out_3 = fail_closed_on_unsupported_sentences(out_3_raw)
+        self.assertEqual(out_3, "Verify the applicable access conditions before commitment.")
+
+        out_3b_raw = clean_and_validate_hidden_facts("Determine whether additional authorization is required.", set())
+        out_3b = fail_closed_on_unsupported_sentences(out_3b_raw)
+        self.assertEqual(out_3b, "Determine whether additional authorization is required.")
+
+        # 4. Conditional recommendation survives.
+        out_4_raw = clean_and_validate_hidden_facts("Evaluate alternative production approaches if access is unavailable.", set())
+        out_4 = fail_closed_on_unsupported_sentences(out_4_raw)
+        self.assertEqual(out_4, "Evaluate alternative production approaches if access is unavailable.")
+
+        # 5. Unsupported factual assertion still fails closed.
+        out_5_raw = clean_and_validate_hidden_facts("Orbital Media Corporation secured exclusive access in 2027.", set())
+        out_5 = fail_closed_on_unsupported_sentences(out_5_raw)
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_5)
+
+        # 6. Unsupported proper noun inside analytical language still fails closed.
+        out_6_raw = clean_and_validate_hidden_facts("Evaluation of custom licensing needs for the Paramount footage remains unverified.", set())
+        out_6 = fail_closed_on_unsupported_sentences(out_6_raw)
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_6)
+
+        # 7. Unsupported number/date inside action language still fails closed.
+        out_7_raw = clean_and_validate_hidden_facts("Determine whether the 42 crew members can be supported.", set())
+        out_7 = fail_closed_on_unsupported_sentences(out_7_raw)
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_7)
+
+        # 8. Analytical prefix cannot launder unsupported factual material.
+        out_8_raw = clean_and_validate_hidden_facts("Analysis shows that the facility supports 14 production crews.", set())
+        out_8 = fail_closed_on_unsupported_sentences(out_8_raw)
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_8)
+
+        out_8b_raw = clean_and_validate_hidden_facts("Verify the confirmed $25 million agreement.", set())
+        out_8b = fail_closed_on_unsupported_sentences(out_8b_raw)
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_8b)
+
+        # 9. Unknown audience remains unknown.
+        out_9 = neutralize_positive_assumptions("It is assumed that a viable audience exists.")
+        self.assertIn("Audience demand remains unverified", out_9)
+
+        # 10. Unknown access remains unknown.
+        out_10 = neutralize_positive_assumptions("It is assumed that access has been obtained.")
+        self.assertIn("Access has not been established and remains unverified.", out_10)
+
+        # 11. Unknown funding/rights remains unknown.
+        out_11 = neutralize_positive_assumptions("It is assumed that project funding is available.")
+        self.assertIn("Funding status is unspecified and remains unverified.", out_11)
+
+        # 12. External schedule change alone creates no internal dependency.
+        out_12 = make_schedule_conditional("This highlights a history of timing adjustments that must be accounted for in any proposed production timeline.")
+        self.assertIn("determine whether/how", out_12.lower())
+        self.assertNotIn("must be accounted for", out_12.lower())
+
+        # 13. Explicit conditional dependency remains conditional.
+        out_13 = make_schedule_conditional("If project access ultimately depends on that external event, any resulting internal schedule implications would need to be evaluated.")
+        self.assertIn("would need to be evaluated", out_13.lower())
+
+        # 14. Explicit grounded dependency can be discussed when actually supplied.
+        out_14 = make_schedule_conditional("If access is established, the timeline may be aligned.")
+        self.assertIn("may be aligned", out_14.lower())
+
+        # 15. Structural headings remain intact.
+        out_15 = clean_and_validate_hidden_facts("### 3. DECISIVE REASONS", set())
+        self.assertEqual(out_15, "### 3. DECISIVE REASONS")
+
+        # 16. Citation-scoped factual validation remains intact.
+        mock_ctx = MagicMock()
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = """
+        E1 — Claim: Vast Space headquarters is in Long Beach.
+        Supporting Excerpt: "Vast Space has its primary facility located in Long Beach, California."
+        """
+        mock_ctx.session.events = [mock_event_research]
+        out_16 = clean_and_validate_hidden_facts("Vast Space primary facility in Long Beach [E1].", set(), ctx=mock_ctx)
+        self.assertNotIn("[UNSUPPORTED]", out_16)
+
+        # 17. M7A.1 callback Context behavior remains intact.
+        mock_callback_ctx = MagicMock(spec=Context)
+        mock_callback_ctx.get_invocation_context.return_value = mock_ctx
+        llm_response = LlmResponse(content=types.Content(role="model", parts=[types.Part(text="Vast Space is in Long Beach and this is a successful project.")]))
+        res = verdict_after_model_callback(mock_callback_ctx, llm_response)
+        self.assertIsNotNone(res)
+        self.assertIn("Long Beach", res.content.parts[0].text)
+        self.assertIn("existing/distributed", res.content.parts[0].text)
+
+        # 18. Sentence-level fail-closed remains intact.
+        out_18 = fail_closed_on_unsupported_sentences("This has [UNSUPPORTED] word.")
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_18)
 
 
 if __name__ == "__main__":

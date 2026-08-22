@@ -80,6 +80,9 @@ ANALYTICAL_SUBSTANTIVE_WORDS = {
     "address", "addressing", "addressed",
     "check", "checking", "checked",
     "commit", "commitment", "committed",
+    "establish", "establishes", "established", "establishing",
+    "compare", "compares", "compared", "comparing", "comparison", "comparisons",
+    "reach", "reached",
     
     # Uncertainty/missing evidence nouns and adjectives
     "unverified", "unknown", "unresolved", "unspecified", "unclear", "undetermined",
@@ -88,6 +91,8 @@ ANALYTICAL_SUBSTANTIVE_WORDS = {
     "uncertainty", "uncertainties", "unavailability", "unavailable", "adequacy", "adequate",
     "viability", "viable", "feasibility", "feasible", "sustainability", "sustainable",
     "suitability", "suitable", "applicability", "applicable",
+    "unsupported", "unproven", "unconfirmed", "unsupplied",
+    "sufficient", "sufficiency", "sufficiently",
     
     # Common project/domain substantive nouns
     "project", "production", "budget", "funding", "rights", "schedule", "timeline", "timelines", "schedules",
@@ -101,6 +106,13 @@ ANALYTICAL_SUBSTANTIVE_WORDS = {
     "decisive", "reasons", "unresolved", "required", "next", "actions", "action", "strategic",
     "ledger", "brief", "claim", "claims", "source", "title", "url", "publish", "date", "supporting",
     "excerpt", "excerpts", "director", "user", "research", "agent", "pipeline", "contract",
+    "dependency", "dependencies", "dependent",
+    "relationship", "relationships",
+    "external", "internal",
+    "conclusion", "conclusions",
+    "confident",
+    "adjustment", "adjustments",
+    "connection", "connections",
     
     # Grammatical/generic words that might get capitalized at sentence starts
     "the", "a", "an", "and", "or", "but", "if", "because", "as", "what", "where", "when", "why", "how",
@@ -109,7 +121,7 @@ ANALYTICAL_SUBSTANTIVE_WORDS = {
     "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did",
     "will", "would", "shall", "should", "can", "could", "may", "might", "must", "whether", "if", "either",
     "neither", "both", "each", "every", "all", "any", "some", "such", "no", "not", "only", "other", "another",
-    "additional", "general", "specific", "proposed", "current", "future", "past", "historical", "contextual",
+    "additional", "general", "specific", "proposed", "current", "currently", "future", "past", "historical", "contextual",
     "context", "factual", "assertion", "assertions"
 }
 
@@ -130,7 +142,8 @@ def classify_sentence_role(sentence: str) -> str:
     action_verbs = {
         "verify", "determine", "evaluate", "assess", "confirm", "investigate",
         "obtain", "coordinate", "align", "track", "clarify", "ensure", "analyze",
-        "identify", "explore", "mitigate", "address", "check", "review"
+        "identify", "explore", "mitigate", "address", "check", "review", "compare",
+        "establish"
     }
     
     # Strip list markers
@@ -143,7 +156,8 @@ def classify_sentence_role(sentence: str) -> str:
             
     # Check for modal verbs + action verbs
     action_patterns = [
-        r"\b(?:should|must|needs\s+to|need\s+to|to\s+be|required\s+to|planning\s+to)\s+(?:verify|determine|evaluate|assess|confirm|investigate|obtain|coordinate|align|track|clarify|ensure|analyze|identify|explore|mitigate|address|check|review)\b",
+        r"\b(?:should|must|needs?\s+to|need\s+to|to\s+be|required\s+to|planning\s+to|recommend\s+to|would\s+need\s+to|choose\s+to|decide\s+to|to|be\s+required\s+to)\s+(?:verify|determine|evaluate|assess|confirm|investigate|obtain|coordinate|align|track|clarify|ensure|analyze|identify|explore|mitigate|address|check|review|compare|establish)\b",
+        r"\b(?:needs?|must|should|required|would\s+need)\s+be\s+(?:verified|determined|evaluated|assessed|confirmed|investigated|obtained|coordinated|aligned|tracked|clarified|ensured|analyzed|identified|explored|mitigated|addressed|checked|reviewed|compared|established)\b",
         r"\bnext\s+actions?\b",
         r"\bverify\s+first\b",
         r"\baction\s+items?\b",
@@ -159,6 +173,25 @@ def classify_sentence_role(sentence: str) -> str:
         r"\bunknown\b",
         r"\bunresolved\b",
         r"\bunspecified\b",
+        r"\bundetermined\b",
+        r"\bunclear\b",
+        r"\bunsupported\b",
+        r"\bunavailable\b",
+        r"\bunavailability\b",
+        r"\bunproven\b",
+        r"\b(?:no|lack\s+of|absence\s+of|insufficient|missing|unresolved|without)\s+evidence\b",
+        r"\bnot\s+(?:been\s+)?(?:established|verified|supplied|confirmed|proven|supported|unveiled|specified)\b",
+        r"\bnot\s+yet\s+(?:established|verified|supplied|confirmed|proven|supported)\b",
+        r"\bnot\s+fully\s+(?:established|verified|supplied|confirmed|proven|supported)\b",
+        r"\b(?:remains|remain)\s+(?:unverified|unknown|unresolved|unspecified|undetermined|unclear|unsupported|unavailable|unproven)\b",
+        r"\b(?:remains|remain|is|are)\s+to\s+be\s+(?:verified|established|determined|confirmed|proven|supported)\b",
+        r"\b(?:evidence|information|details?|clarification|verification)\s+(?:is|are|remain|remains)\s+(?:required|needed|necessary)\b",
+        r"\b(?:no|not|does\s+not|do\s+not)\s+(?:establish|creates?|imply|implies|prove|proves)\s+(?:any\s+)?(?:dependency|relationship|connection|alignment)\b",
+        r"\b(?:external|launch|campaign|event|schedule)\s+(?:dates?|timelines?|schedules?|uncertaint(?:y|ies)|changes?|movements?|timing|adjustments?)\b",
+        r"\bwhether\s+[\w\s\-]+?\s+(?:exists|is|can|remains|affects)\b",
+        r"\bviability\s+remains\b",
+        r"\bfeasibility\s+remains\b",
+        r"\bstatus\s+remains\b",
         r"\bnot\s+established\b",
         r"\bnot\s+supplied\b",
         r"\bnot\s+verified\b",
@@ -166,15 +199,11 @@ def classify_sentence_role(sentence: str) -> str:
         r"\bmissing\s+evidence\b",
         r"\black\s+of\s+evidence\b",
         r"\binsufficient\s+evidence\b",
-        r"\bwhether\s+[\w\s\-]+?\s+(?:exists|is|can|remains|affects)\b",
-        r"\bviability\s+remains\b",
-        r"\bfeasibility\s+remains\b",
-        r"\bstatus\s+remains\b",
         r"\bhas\s+not\s+been\s+established\b",
         r"\bnot\s+yet\s+verified\b",
         r"\bnot\s+fully\s+established\b",
-        r"\bundetermined\b",
-        r"\bunclear\b"
+        r"\bmissing\s+inputs?\b",
+        r"\bunresolved\s+uncertainties\b"
     ]
     for pattern in uncertainty_patterns:
         if re.search(pattern, s):
@@ -195,9 +224,23 @@ def classify_sentence_role(sentence: str) -> str:
         r"\bmarket\s+viability\b",
         r"\bcommercial\s+viability\b",
         r"\bproduction\s+feasibility\b",
+        r"\bproject\s+viability\b",
+        r"\bproject\s+feasibility\b",
         r"\bpotential\s+impact\b",
         r"\bpotential\s+effect\b",
+        r"\bpotential\s+influence\b",
+        r"\bpotential\s+implications\b",
         r"\bstrategic\s+implications\b",
+        r"\bconditional\b",
+        r"\bdependency\b",
+        r"\bdependencies\b",
+        r"\bcontingency\b",
+        r"\bcontingencies\b",
+        r"\bimplication\b",
+        r"\bimplications\b",
+        r"\btiming\s+adjustments\b",
+        r"\bproduction\s+timeline\b",
+        r"\bproposed\s+production\s+timeline\b",
         r"\banalysis\b"
     ]
     for pattern in analytical_patterns:
@@ -867,29 +910,41 @@ def make_schedule_conditional(text: str) -> str:
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
 
     # 2. Advanced conditionalization mappings for schedule dependency creation
-    internal_sched = r"(?:production|filming|delivery|release|marketing|festival|distribution|project|delivery's|post-production|production\s+and\s+post-production|documentary|film)\s+(?:schedule|timeline|planning|plan|schedules|timelines|window|windows)"
-    external_timing = r"(?:external|launch|conflicting|subject's|third-party|industry|subject|company's|campaign)\s+(?:date|dates|schedule|timeline|timing|event|events|uncertainty|uncertainties|launch\s+date|launch\s+schedule|launch\s+uncertainty|campaign\s+schedule|campaign\s+timeline|campaign)"
+    internal_sched = r"(?:production|filming|delivery|release|marketing|festival|distribution|project|delivery's|post-production|production\s+and\s+post-production|documentary|film)\s+(?:schedule|timeline|planning|plan|schedules|timelines|window|windows|date|dates|activities|activity|focus)"
+    external_timing = r"(?:external|launch|conflicting|subject's|third-party|industry|subject|company's|campaign|timing)\s+(?:date|dates|schedule|timeline|timing|event|events|uncertainty|uncertainties|launch\s+date|launch\s+schedule|launch\s+uncertainty|campaign\s+schedule|campaign\s+timeline|campaign|adjustments?|delays?|changes?|slips?|movements?|history|history\s+of\s+timing\s+adjustments|historical\s+schedule\s+changes|timing\s+adjustments)"
 
     advanced_mappings = {
         # Pattern: external timing introduces timing uncertainty for internal schedule
-        rf"\b({external_timing})\s+(?:introduces|creates|causes|leads\s+to)\s+(?:timing\s+)?uncertainty\s+(?:for|in)\s+(?:the\s+)?({internal_sched})\b":
+        rf"\b({external_timing})\s+(?:introduces|creates|causes|leads\s+to)\s+(?:timing\s+)?uncertainty\s+(?:for|in)\s+(?:the\s+)?(?:any\s+)?(?:proposed\s+)?({internal_sched})\b":
             r"\1 is an external event; determine whether/how it ___TEMP_AFFECTS___ the \2",
 
         # Pattern: internal schedule depends on/is dictated by external timing
-        rf"\b(?:the\s+)?({internal_sched})\s+(?:depends\s+on|depend\s+on|is\s+dictated\s+by|are\s+dictated\s+by|is\s+impacted\s+by|are\s+impacted\s+by|is\s+governed\s+by|are\s+governed\s+by|creates\s+a\s+dependency\s+on|has\s+a\s+dependency\s+on)\s+(?:the\s+)?({external_timing})\b":
+        rf"\b(?:the\s+)?(?:any\s+)?(?:proposed\s+)?({internal_sched})\s+(?:depends\s+on|depend\s+on|is\s+dictated\s+by|are\s+dictated\s+by|is\s+impacted\s+by|are\s+impacted\s+by|is\s+governed\s+by|are\s+governed\s+by|creates\s+a\s+dependency\s+on|has\s+a\s+dependency\s+on)\s+(?:the\s+)?({external_timing})\b":
             r"whether the \1 depends on the \2 remains unverified; verify the external schedule and determine whether/how it ___TEMP_AFFECTS___ the \1",
 
         # Pattern: external timing impacts/dictates/determines/governs internal schedule
-        rf"\b({external_timing})\s+(?:impacts|impact|dictates|dictate|determines|determine|governs|govern|shapes|shape|affects|affect)\s+(?:the\s+)?({internal_sched})\b":
+        rf"\b({external_timing})\s+(?:impacts|impact|dictates|dictate|determines|determine|governs|govern|shapes|shape|affects|affect)\s+(?:the\s+)?(?:any\s+)?(?:proposed\s+)?({internal_sched})\b":
             r"\1 is an external event; determine whether/how it ___TEMP_AFFECTS___ the \2",
 
         # Pattern: build/structure/plan internal schedule around external timing/uncertainty
-        rf"\b(?:the\s+)?(?:build|structure|plan|schedule|organize)\s+(?:the\s+)?({internal_sched})\s+(?:around|based\s+on)\s+(?:the\s+)?({external_timing})\b":
+        rf"\b(?:the\s+)?(?:build|structure|plan|schedule|organize)\s+(?:the\s+)?(?:any\s+)?(?:proposed\s+)?({internal_sched})\s+(?:around|based\s+on)\s+(?:the\s+)?({external_timing})\b":
             r"determine whether/how the \2 ___TEMP_AFFECTS___ the \1 before final planning",
 
         # Pattern: internal schedule must/should/needs to align with external timing
-        rf"\b(?:the\s+)?({internal_sched})\s+(?:must|should|needs\s+to|need\s+to|would\s+need|would\s+need\s+to|is\s+required\s+to)\s+(?:align\s+with|align|be\s+aligned\s+with|be\s+aligned\s+to|coordinate\s+with|be\s+coordinated\s+with)\s+(?:the\s+)?({external_timing})\b":
+        rf"\b(?:the\s+)?(?:any\s+)?(?:proposed\s+)?({internal_sched})\s+(?:must|should|needs\s+to|need\s+to|would\s+need|would\s+need\s+to|is\s+required\s+to)\s+(?:align\s+with|align|be\s+aligned\s+with|be\s+aligned\s+to|coordinate\s+with|be\s+coordinated\s+with)\s+(?:the\s+)?({external_timing})\b":
             r"determine whether/how the \2 ___TEMP_AFFECTS___ the \1 before deciding if alignment is required",
+
+        # Pattern: external timing adjustments must be accounted for in internal schedule
+        rf"\b({external_timing})\s+(?:that\s+)?(?:must|should|needs?\s+to|is\s+required\s+to|has\s+to)\s+be\s+accounted\s+for\s+(?:in|within)\s+(?:the\s+)?(?:any\s+)?(?:proposed\s+)?({internal_sched})\b":
+            r"\1; determine whether/how those timing adjustments ___TEMP_AFFECTS___ the \2",
+
+        # Pattern: internal schedule must account for external timing adjustments
+        rf"\b(?:the\s+)?(?:any\s+)?(?:proposed\s+)?({internal_sched})\s+(?:must|should|needs?\s+to|is\s+required\s+to|has\s+to)\s+account\s+for\s+(?:the\s+)?({external_timing})\b":
+            r"determine whether/how the \1 needs to account for the \2 before final planning",
+
+        # Pattern: external timing adjustments requires/forces internal schedule to shift/move
+        rf"\b({external_timing})\s+(?:requires|compels|dictates|forces|demands)\s+(?:the\s+)?(?:any\s+)?(?:proposed\s+)?({internal_sched})\s+to\s+(?:move|change|shift|align|slip|be\s+delayed|be\s+adjusted)\b":
+            r"whether the \1 requires the \2 to shift remains unverified; determine whether/how it ___TEMP_AFFECTS___ the \2",
     }
 
     sorted_keys = sorted(advanced_mappings.keys(), key=len, reverse=True)

@@ -40,7 +40,7 @@ LOCATION / TEMPORAL DISCIPLINE
 A headquarters/job/test/launch location is not automatically a filming location. Never name a candidate filming site unless user explicitly selected it. Preserve completed/planned/current/expected/delayed exactly.
 
 ASSUMPTION DISCIPLINE
-Never assume absence/presence of partnership, access agreement, contract, permission, funding, resource, coordination, regulatory dependency, insurance need, safety requirement, milestone dependency. Never invent what documentary may require.
+Never assume absence/presence of partnership, access agreement, contract, permission, funding, resource, coordination, regulatory dependency, insurance need, safety requirement, milestone dependency. Never invent what documentary may require. Express unsupported positive prerequisites as UNKNOWN, MISSING EVIDENCE, or explicit conditional hypotheses (e.g., "Access has not been established"), never as positive assumptions.
 
 LEGAL / REGULATORY
 Employee/job evidence supports employee/job context only; not external crews/facility access/citizenship/screening.

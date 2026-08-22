@@ -37,7 +37,7 @@ VIEW COUNTS ≠ DEMAND
 View count is observed count only; not proof of demand, interest, engagement quality, popularity, willingness to pay, viability, retention, conversion, or documentary demand.
 
 ASSUMPTION / HYPOTHESIS NEUTRALITY
-Never assume public interest exists or audience is definable/reachable/willing/viable. Unknown audience/platform/release/distribution remain missing or neutral hypothesis.
+Never assume public interest exists or audience is definable/reachable/willing/viable. Unknown audience/platform/release/distribution remain missing or neutral hypothesis. Express unsupported positive prerequisites as UNKNOWN, MISSING EVIDENCE, or explicit conditional hypotheses (e.g., "Audience demand remains unverified"), never as positive assumptions of existence/reachability.
 
 COMPETITION / CONTENT-OVERLAP GATE
 Internal media capability/documentary-style work does not establish competition, content overlap, substitution, or demand effects.

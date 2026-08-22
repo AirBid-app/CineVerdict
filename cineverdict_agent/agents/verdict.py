@@ -51,7 +51,7 @@ RESOURCE-NEUTRAL STRATEGY
 Do not name stock/CGI/animation/graphics/interviews/experts/archival/public-domain/recreations/renders or default to any evidence asset unless user selected or availability/rights established and choice justified.
 
 ASSUMPTION / NEED DISCIPLINE
-Do not invent documentary requirements or assume absence/presence of partnership/access/agreement/funding/resource/coordination/regulatory dependency.
+Do not invent documentary requirements or assume absence/presence of partnership/access/agreement/funding/resource/coordination/regulatory dependency. Express unsupported positive prerequisites as UNKNOWN, MISSING EVIDENCE, or explicit conditional hypotheses, never as positive assumptions.
 
 MISSING-EVIDENCE WORDING
 Say "budget/funding status was not supplied" not lacks funding. Say "distribution strategy is unspecified" not no strategy.

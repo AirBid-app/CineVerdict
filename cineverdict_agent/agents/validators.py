@@ -55,6 +55,254 @@ KNOWN_LABELS = {
 }
 
 
+ANALYTICAL_SUBSTANTIVE_WORDS = {
+    # Action verbs and derivatives
+    "verify", "verification", "verified", "verifies",
+    "determine", "determination", "determined", "determines",
+    "evaluate", "evaluation", "evaluates", "evaluated", "evaluative",
+    "assess", "assessment", "assessed", "assesses",
+    "confirm", "confirmation", "confirmed", "confirms",
+    "investigate", "investigation", "investigative",
+    "obtain", "obtaining", "obtained",
+    "coordinate", "coordination", "coordinated",
+    "align", "alignment", "aligned",
+    "track", "tracking", "tracked",
+    "clarify", "clarification", "clarified",
+    "ensure", "ensuring", "ensured",
+    "analyze", "analysis", "analyst", "analytical", "analyses",
+    "identify", "identification", "identified",
+    "explore", "exploration", "explored",
+    "structure", "structured", "structuring",
+    "plan", "planning", "planned",
+    "manage", "management", "managed",
+    "review", "reviewing", "reviewed",
+    "mitigate", "mitigation", "mitigated",
+    "address", "addressing", "addressed",
+    "check", "checking", "checked",
+    "commit", "commitment", "committed",
+    
+    # Uncertainty/missing evidence nouns and adjectives
+    "unverified", "unknown", "unresolved", "unspecified", "unclear", "undetermined",
+    "missing", "evidence", "lack", "absence", "insufficient", "status",
+    "exist", "exists", "existence", "potential", "potentially", "likely", "possible", "possibly",
+    "uncertainty", "uncertainties", "unavailability", "unavailable", "adequacy", "adequate",
+    "viability", "viable", "feasibility", "feasible", "sustainability", "sustainable",
+    "suitability", "suitable", "applicability", "applicable",
+    
+    # Common project/domain substantive nouns
+    "project", "production", "budget", "funding", "rights", "schedule", "timeline", "timelines", "schedules",
+    "access", "conditions", "authorization", "approaches", "approach", "alternative", "alternatives",
+    "demand", "audience", "market", "commercial", "public", "interest", "popularity", "willingness", "pay",
+    "size", "personnel", "availability", "facilities", "hardware", "subject", "company", "launch",
+    "milestone", "milestones", "campaign", "opening", "release", "regulatory", "event", "events",
+    "timing", "development", "editorial", "focus", "post-production", "distribution", "festival",
+    "delivery", "planning", "activity", "implications", "implication", "hypothesis", "hypotheses",
+    "assumption", "assumptions", "risk", "risks", "verdict", "final", "evaluation", "confidence",
+    "decisive", "reasons", "unresolved", "required", "next", "actions", "action", "strategic",
+    "ledger", "brief", "claim", "claims", "source", "title", "url", "publish", "date", "supporting",
+    "excerpt", "excerpts", "director", "user", "research", "agent", "pipeline", "contract",
+    
+    # Grammatical/generic words that might get capitalized at sentence starts
+    "the", "a", "an", "and", "or", "but", "if", "because", "as", "what", "where", "when", "why", "how",
+    "this", "that", "these", "those", "then", "there", "their", "theirs", "they", "them", "he", "she", "it",
+    "its", "his", "her", "hers", "him", "we", "us", "our", "ours", "you", "your", "yours", "i", "me", "my",
+    "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did",
+    "will", "would", "shall", "should", "can", "could", "may", "might", "must", "whether", "if", "either",
+    "neither", "both", "each", "every", "all", "any", "some", "such", "no", "not", "only", "other", "another",
+    "additional", "general", "specific", "proposed", "current", "future", "past", "historical", "contextual",
+    "context", "factual", "assertion", "assertions"
+}
+
+
+def classify_sentence_role(sentence: str) -> str:
+    """Classifies a sentence/clause into one of the semantic roles:
+    - 'structural': structural heading/label
+    - 'action': Recommended action / verification task
+    - 'uncertainty': Missing evidence / uncertainty
+    - 'analytical_assumption': Analytical interpretation / assumption
+    - 'factual': Factual evidence assertion
+    """
+    s = sentence.strip().lower()
+    if not s:
+        return "structural"
+        
+    # E. Recommended action / verification task (Action)
+    action_verbs = {
+        "verify", "determine", "evaluate", "assess", "confirm", "investigate",
+        "obtain", "coordinate", "align", "track", "clarify", "ensure", "analyze",
+        "identify", "explore", "mitigate", "address", "check", "review"
+    }
+    
+    # Strip list markers
+    clean_s = re.sub(r'^(?:-\s*|\*\s*|\d+\.\s*)', '', s).strip()
+    first_word_match = re.match(r'^([a-z]+)', clean_s)
+    if first_word_match:
+        first_word = first_word_match.group(1)
+        if first_word in action_verbs:
+            return "action"
+            
+    # Check for modal verbs + action verbs
+    action_patterns = [
+        r"\b(?:should|must|needs\s+to|need\s+to|to\s+be|required\s+to|planning\s+to)\s+(?:verify|determine|evaluate|assess|confirm|investigate|obtain|coordinate|align|track|clarify|ensure|analyze|identify|explore|mitigate|address|check|review)\b",
+        r"\bnext\s+actions?\b",
+        r"\bverify\s+first\b",
+        r"\baction\s+items?\b",
+        r"\brecommended\s+actions?\b"
+    ]
+    for pattern in action_patterns:
+        if re.search(pattern, s):
+            return "action"
+            
+    # D. Missing evidence / uncertainty
+    uncertainty_patterns = [
+        r"\bunverified\b",
+        r"\bunknown\b",
+        r"\bunresolved\b",
+        r"\bunspecified\b",
+        r"\bnot\s+established\b",
+        r"\bnot\s+supplied\b",
+        r"\bnot\s+verified\b",
+        r"\babsence\s+of\s+evidence\b",
+        r"\bmissing\s+evidence\b",
+        r"\black\s+of\s+evidence\b",
+        r"\binsufficient\s+evidence\b",
+        r"\bwhether\s+[\w\s\-]+?\s+(?:exists|is|can|remains|affects)\b",
+        r"\bviability\s+remains\b",
+        r"\bfeasibility\s+remains\b",
+        r"\bstatus\s+remains\b",
+        r"\bhas\s+not\s+been\s+established\b",
+        r"\bnot\s+yet\s+verified\b",
+        r"\bnot\s+fully\s+established\b",
+        r"\bundetermined\b",
+        r"\bunclear\b"
+    ]
+    for pattern in uncertainty_patterns:
+        if re.search(pattern, s):
+            return "uncertainty"
+            
+    # B & C. Analytical interpretation / assumption
+    analytical_patterns = [
+        r"\bhypothesis\b",
+        r"\bhypothesis:\b",
+        r"\bassumption\b",
+        r"\bassumption:\b",
+        r"\bit\s+is\s+assumed\b",
+        r"\bassumes\s+that\b",
+        r"\bassuming\b",
+        r"\bviability\b",
+        r"\bfeasibility\b",
+        r"\bsustainability\b",
+        r"\bmarket\s+viability\b",
+        r"\bcommercial\s+viability\b",
+        r"\bproduction\s+feasibility\b",
+        r"\bpotential\s+impact\b",
+        r"\bpotential\s+effect\b",
+        r"\bstrategic\s+implications\b",
+        r"\banalysis\b"
+    ]
+    for pattern in analytical_patterns:
+        if re.search(pattern, s):
+            return "analytical_assumption"
+            
+    return "factual"
+
+
+def neutralize_positive_assumptions(text: str) -> str:
+    """Neutralizes any positive assumptions converting absence of evidence into positive claims.
+    
+    Ensures unknown or unverified conditions remain UNKNOWN/unverified, rather than positive assumptions.
+    """
+    lines = text.split("\n")
+    processed_lines = []
+    
+    for line in lines:
+        if not line.strip():
+            processed_lines.append(line)
+            continue
+            
+        # Detect structural part vs body
+        split_res = split_structural_line(line)
+        if split_res:
+            label_part, body_part = split_res
+        else:
+            label_part = ""
+            body_part = line
+            
+        # Split body into sentences
+        sentence_end = re.compile(r'([.!?]\s+)')
+        parts = sentence_end.split(body_part)
+        sentences = []
+        i = 0
+        while i < len(parts):
+            s = parts[i]
+            if i + 1 < len(parts):
+                s += parts[i+1]
+                i += 2
+            else:
+                i += 1
+            if s:
+                sentences.append(s)
+                
+        processed_sentences = []
+        for sentence in sentences:
+            s_clean = sentence.strip().lower()
+            
+            # Match positive assumption patterns
+            has_assumption_intro = (
+                "assumed" in s_clean or 
+                "assumption" in s_clean or 
+                "assume" in s_clean or 
+                "hypothesis" in s_clean
+            )
+            
+            if has_assumption_intro:
+                # Audience
+                if any(x in s_clean for x in ["audience", "demand", "interest", "popularity", "market"]):
+                    if not any(x in s_clean for x in ["unverified", "unknown", "unspecified", "not established", "not been", "remains to be"]):
+                        sentence = re.sub(
+                            r'(?:(?:it\s+is\s+)?(?:assumed|hypothesized|assumes)(?:\s+that)?|(?:the\s+)?(?:assumption|hypothesis)(?:\s+is)?(?:\s+that)?)\s+(?:an?\s+)?(?:viable|commercially\s+viable|reachable|defined)?\s*(?:audience|demand|public\s+interest|market)(?:\s+(?:exists|is\s+reachable|is\s+viable|exists\s+and\s+is\s+reachable|is\s+defined|is\s+reachable\s+or\s+unverified|is\s+commercially\s+sustainable|is\s+commercially\s+viable))?[.\s]*',
+                            "Audience demand remains unverified and whether a reachable audience exists remains unknown.",
+                            sentence,
+                            flags=re.IGNORECASE
+                        )
+                
+                # Access
+                elif "access" in s_clean or "coordination" in s_clean:
+                    if not any(x in s_clean for x in ["unverified", "unknown", "unspecified", "not established", "not been", "remains to be"]):
+                        sentence = re.sub(
+                            r'(?:(?:it\s+is\s+)?(?:assumed|hypothesized|assumes)(?:\s+that)?|(?:the\s+)?(?:assumption|hypothesis)(?:\s+is)?(?:\s+that)?)\s+(?:desired|personnel|facility|hardware)?\s*(?:access|coordination)(?:\s+(?:is\s+available|can\s+be\s+obtained|exists|is\s+established))?[.\s]*',
+                            "Access has not been established and remains unverified.",
+                            sentence,
+                            flags=re.IGNORECASE
+                        )
+                
+                # Funding / Budget
+                elif "funding" in s_clean or "budget" in s_clean:
+                    if not any(x in s_clean for x in ["unverified", "unknown", "unspecified", "not established", "not been", "remains to be"]):
+                        sentence = re.sub(
+                            r'(?:(?:it\s+is\s+)?(?:assumed|hypothesized|assumes)(?:\s+that)?|(?:the\s+)?(?:assumption|hypothesis)(?:\s+is)?(?:\s+that)?)\s+(?:project|budget)?\s*(?:funding|budget)(?:\s+(?:exists|is\s+available))?[.\s]*',
+                            "Funding status is unspecified and remains unverified.",
+                            sentence,
+                            flags=re.IGNORECASE
+                        )
+                        
+                # Rights / Authorization / Licensing / Clearance / Permission
+                elif any(x in s_clean for x in ["rights", "authorization", "licensing", "clearance", "permission"]):
+                    if not any(x in s_clean for x in ["unverified", "unknown", "unspecified", "not established", "not been", "remains to be"]):
+                        sentence = re.sub(
+                            r'(?:(?:it\s+is\s+)?(?:assumed|hypothesized|assumes)(?:\s+that)?|(?:the\s+)?(?:assumption|hypothesis)(?:\s+is)?(?:\s+that)?)\s+(?:applicable|necessary|custom)?\s*(?:rights|authorization|licensing|clearance|permission)(?:\s+(?:can\s+be\s+obtained|exists|is\s+available))?[.\s]*',
+                            "Rights/authorization remain to be verified.",
+                            sentence,
+                            flags=re.IGNORECASE
+                        )
+
+            processed_sentences.append(sentence)
+            
+        processed_lines.append(label_part + "".join(processed_sentences))
+        
+    return "\n".join(processed_lines)
+
+
 def split_structural_line(line: str) -> tuple[str, str] | None:
     """Detects and splits known structural labels, returning (label_prefix, body) or None."""
     labels_pattern = "|".join(re.escape(label) for label in KNOWN_LABELS)
@@ -407,38 +655,67 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
             for var in get_word_variations(w):
                 expanded_allowed.add(var)
 
-        # Lowercase start of sentences in body_part to avoid false-positives only for analytical lines
-        if is_analytical_or_uncertainty_line(body_part):
-            body_part_for_extraction = lowercase_sentence_starts(body_part)
-        else:
-            body_part_for_extraction = body_part
+        # Split body_part into sentences
+        sentence_end = re.compile(r'([.!?]\s+)')
+        parts = sentence_end.split(body_part)
+        sentences = []
+        i = 0
+        while i < len(parts):
+            s = parts[i]
+            if i + 1 < len(parts):
+                s += parts[i+1]
+                i += 2
+            else:
+                i += 1
+            if s:
+                sentences.append(s)
 
-        # Extract proper nouns (capitalized words) and numbers from the body part
-        significant_words = set(re.findall(r"\b[A-Z][a-zA-Z0-9\-]*\b|\b\d+\b", body_part_for_extraction))
-        unauthorized = []
-        for w in significant_words:
-            w_lower = w.lower()
+        processed_sentences = []
+        for sentence in sentences:
+            sentence_role = classify_sentence_role(sentence)
             
-            # Check conservative morphological variations of the word
-            w_vars = get_word_variations(w_lower)
-            is_authorized = (
-                any(var in expanded_allowed for var in w_vars)
-                or w_lower in COMMON_STOP_WORDS
-                or w_lower in SYSTEM_ALLOWED_WORDS
-                or any(var in SYSTEM_ALLOWED_WORDS for var in w_vars)
-            )
-            
-            if not is_authorized and len(w) > 1:
-                unauthorized.append(w)
+            if sentence_role != "factual":
+                sentence_for_extraction = lowercase_sentence_starts(sentence)
+            else:
+                sentence_for_extraction = sentence
+
+            significant_words = set(re.findall(r"\b[A-Z][a-zA-Z0-9\-]*\b|\b\d+\b", sentence_for_extraction))
+            unauthorized = []
+            for w in significant_words:
+                w_lower = w.lower()
                 
-        # Sort by length descending to replace larger words first (prevents substring issues)
-        unauthorized.sort(key=len, reverse=True)
-        validated_body = body_part
-        for w in unauthorized:
-            # Use word boundaries for precise replacement
-            validated_body = re.sub(r"\b" + re.escape(w) + r"\b", "[UNSUPPORTED]", validated_body, flags=re.IGNORECASE)
+                # Check conservative morphological variations of the word
+                w_vars = get_word_variations(w_lower)
+                is_authorized = (
+                    any(var in expanded_allowed for var in w_vars)
+                    or w_lower in COMMON_STOP_WORDS
+                    or w_lower in SYSTEM_ALLOWED_WORDS
+                    or any(var in SYSTEM_ALLOWED_WORDS for var in w_vars)
+                )
+                
+                if not is_authorized and sentence_role != "factual":
+                    is_authorized = (
+                        w_lower in ANALYTICAL_SUBSTANTIVE_WORDS
+                        or any(var in ANALYTICAL_SUBSTANTIVE_WORDS for var in w_vars)
+                    )
+                    if not is_authorized and "-" in w_lower:
+                        parts_list = [p for p in w_lower.split("-") if p]
+                        if parts_list and all(
+                            sub in ANALYTICAL_SUBSTANTIVE_WORDS or any(var in ANALYTICAL_SUBSTANTIVE_WORDS for var in get_word_variations(sub))
+                            for sub in parts_list
+                        ):
+                            is_authorized = True
+                
+                if not is_authorized and len(w) > 1:
+                    unauthorized.append(w)
+                    
+            unauthorized.sort(key=len, reverse=True)
+            validated_sentence = sentence
+            for w in unauthorized:
+                validated_sentence = re.sub(r"\b" + re.escape(w) + r"\b", "[UNSUPPORTED]", validated_sentence, flags=re.IGNORECASE)
+            processed_sentences.append(validated_sentence)
             
-        processed_lines.append(label_part + validated_body)
+        processed_lines.append(label_part + "".join(processed_sentences))
         
     return "\n".join(processed_lines)
 
@@ -695,6 +972,7 @@ def market_after_model_callback(callback_context, llm_response: LlmResponse) -> 
             orig = part.text
             text = clean_and_validate_hidden_facts(orig, allowed_words, ctx=ctx)
             text = neutralize_audience_assumptions(text)
+            text = neutralize_positive_assumptions(text)
             text = neutralize_evaluative_words(text, allowed_words)
             text = neutralize_evidence_strength_upgrades(text)
             text = make_schedule_conditional(text)
@@ -721,6 +999,7 @@ def production_risk_after_model_callback(
             orig = part.text
             text = clean_and_validate_hidden_facts(orig, allowed_words, ctx=ctx)
             text = neutralize_production_assumptions(text)
+            text = neutralize_positive_assumptions(text)
             text = neutralize_evaluative_words(text, allowed_words)
             text = neutralize_evidence_strength_upgrades(text)
             text = make_schedule_conditional(text)
@@ -744,6 +1023,7 @@ def verdict_after_model_callback(callback_context, llm_response: LlmResponse) ->
         if part.text:
             orig = part.text
             text = clean_and_validate_hidden_facts(orig, allowed_words, ctx=ctx)
+            text = neutralize_positive_assumptions(text)
             text = neutralize_evaluative_words(text, allowed_words)
             text = neutralize_evidence_strength_upgrades(text)
             text = make_schedule_conditional(text)

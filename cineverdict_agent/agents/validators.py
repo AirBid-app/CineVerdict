@@ -276,7 +276,7 @@ def make_schedule_conditional(text: str) -> str:
 
 
 def market_after_model_callback(callback_context, llm_response: LlmResponse) -> LlmResponse | None:
-    ctx = callback_context.invocation_context
+    ctx = callback_context.get_invocation_context()
     if not llm_response.content or not llm_response.content.parts:
         return None
 
@@ -299,7 +299,7 @@ def market_after_model_callback(callback_context, llm_response: LlmResponse) -> 
 def production_risk_after_model_callback(
     callback_context, llm_response: LlmResponse
 ) -> LlmResponse | None:
-    ctx = callback_context.invocation_context
+    ctx = callback_context.get_invocation_context()
     if not llm_response.content or not llm_response.content.parts:
         return None
 
@@ -320,7 +320,7 @@ def production_risk_after_model_callback(
 
 
 def verdict_after_model_callback(callback_context, llm_response: LlmResponse) -> LlmResponse | None:
-    ctx = callback_context.invocation_context
+    ctx = callback_context.get_invocation_context()
     if not llm_response.content or not llm_response.content.parts:
         return None
 

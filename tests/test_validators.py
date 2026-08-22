@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import MagicMock
 from google.adk.models.llm_response import LlmResponse
 from google.genai import types
+from google.adk import Context
 
 from cineverdict_agent.agents.validators import (
     extract_supporting_excerpts,
@@ -102,8 +103,8 @@ class TestValidators(unittest.TestCase):
 
         mock_ctx.session.events = [mock_event_director, mock_event_research]
         
-        mock_callback_ctx = MagicMock()
-        mock_callback_ctx.invocation_context = mock_ctx
+        mock_callback_ctx = MagicMock(spec=Context)
+        mock_callback_ctx.get_invocation_context.return_value = mock_ctx
 
         # Test market callback with forbidden facts & assumptions
         llm_response_market = LlmResponse(

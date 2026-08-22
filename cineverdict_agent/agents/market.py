@@ -2,12 +2,15 @@ from google.adk.agents.llm_agent import Agent
 from google.adk.models import Gemini
 from google.genai import types
 
+from .validators import market_after_model_callback
+
 
 market_agent = Agent(
     model=Gemini(model="gemini-3.5-flash", retry_options=types.HttpRetryOptions(attempts=3)),
     name="market_agent",
     timeout=120.0,
     output_key="market_analysis",
+    after_model_callback=market_after_model_callback,
     description="CineVerdict market and audience intelligence agent.",
     instruction="""
 You are the Market and Audience Agent for CineVerdict.

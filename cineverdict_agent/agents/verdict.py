@@ -2,12 +2,15 @@ from google.adk.agents.llm_agent import Agent
 from google.adk.models import Gemini
 from google.genai import types
 
+from .validators import verdict_after_model_callback
+
 
 verdict_agent = Agent(
     model=Gemini(model="gemini-3.5-flash", retry_options=types.HttpRetryOptions(attempts=3)),
     name="verdict_agent",
     timeout=120.0,
     output_key="final_verdict",
+    after_model_callback=verdict_after_model_callback,
     description="CineVerdict final decision and recommendation agent.",
     instruction="""
 You are the Verdict Agent for CineVerdict. Synthesize upstream work into one final decision. You alone may issue GO, MODIFY, or NO-GO.

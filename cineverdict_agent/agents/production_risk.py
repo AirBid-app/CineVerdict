@@ -2,12 +2,15 @@ from google.adk.agents.llm_agent import Agent
 from google.adk.models import Gemini
 from google.genai import types
 
+from .validators import production_risk_after_model_callback
+
 
 production_risk_agent = Agent(
     model=Gemini(model="gemini-3.5-flash", retry_options=types.HttpRetryOptions(attempts=3)),
     name="production_risk_agent",
     timeout=120.0,
     output_key="production_risk_analysis",
+    after_model_callback=production_risk_after_model_callback,
     description="CineVerdict production feasibility and risk agent.",
     instruction="""
 You are the Production and Risk Agent for CineVerdict.

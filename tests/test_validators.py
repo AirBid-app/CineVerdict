@@ -252,6 +252,88 @@ class TestValidators(unittest.TestCase):
         expected_2 = "determine whether/how the launch uncertainty affects the filming schedule before final planning."
         self.assertEqual(make_schedule_conditional(input_text_2), expected_2)
 
+    def test_numbered_markdown_headings_survive(self):
+        # M7A.3 Failure Class A: Numbered Markdown structural headings must survive validation unchanged.
+        allowed = {"project"}
+        headings = [
+            "### 1. FINAL VERDICT",
+            "### 2. CONFIDENCE",
+            "### 3. DECISIVE REASONS",
+            "### 4. UNRESOLVED UNCERTAINTIES",
+            "### 5. REQUIRED NEXT ACTIONS",
+            "### MARKET ANALYSIS",
+            "### PRODUCTION & RISK ANALYSIS",
+            "### CINEVERDICT FINAL EVALUATION",
+            "- **ANALYSIS**:",
+            "1. **FINAL VERDICT**"
+        ]
+        for heading in headings:
+            output = clean_and_validate_hidden_facts(heading, allowed)
+            self.assertEqual(output, heading)
+
+    def test_citation_scoped_validation(self):
+        # M7A.3 Failure Class B: Citation-scoped validation evaluates line against cited excerpts plus permitted context.
+        # Create a mock context with research agent event containing E1 and E2 excerpts
+        mock_ctx = MagicMock()
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = """
+        E1 — Claim: Vast Space headquarters is in Long Beach.
+        Supporting Excerpt: "Vast Space has its primary facility located in Long Beach, California."
+
+        E2 — Claim: Haven-1 launch is in 2026.
+        Supporting Excerpt: "Haven-1 is planned to launch in 2026."
+        """
+        mock_ctx.session.events = [mock_event_research]
+        
+        # Scenario 1: Line cites E1 and contains words from E1 excerpt -> survives!
+        line_supported = "The primary facility of Vast Space is in Long Beach [E1]."
+        # We don't supply allowed_words (rely on E1 citation mapping)
+        output_supported = clean_and_validate_hidden_facts(line_supported, set(), ctx=mock_ctx)
+        self.assertEqual(output_supported, line_supported)
+
+        # Scenario 2: Line cites E1 but contains fact from E2 ("2026") -> "2026" is NOT in E1, so it is redacted!
+        line_unsupported = "Vast Space primary facility in Long Beach was planned in 2026 [E1]."
+        output_unsupported = clean_and_validate_hidden_facts(line_unsupported, set(), ctx=mock_ctx)
+        self.assertIn("[UNSUPPORTED]", output_unsupported)
+        self.assertNotIn("2026", output_unsupported)
+
+    def test_analytical_and_neutral_language_survival(self):
+        # M7A.3 Failure Class C/D: Neutral analytical or uncertainty statements survive without globally allowlisting their substantive nouns.
+        allowed = set() # Empty allowed set
+        
+        # These are lowercase and contain neutral patterns, so they should survive without any redactions
+        analytical_lines = [
+            "project-specific viability remains unverified.",
+            "whether demand exists remains unknown.",
+            "budget/funding status was not supplied.",
+            "the distribution strategy is unspecified."
+        ]
+        for line in analytical_lines:
+            output = clean_and_validate_hidden_facts(line, allowed)
+            self.assertEqual(output, line)
+
+    def test_positive_audience_neutralized(self):
+        # M7A.3 Failure Class C/D: Positive unsupported audience language is neutralized
+        input_text = "We assume public interest exists and the project is viable."
+        # "public interest exists" should be neutralized, while "viable" gets rewritten
+        output = neutralize_audience_assumptions(input_text)
+        self.assertIn("HYPOTHESIS: public interest may exist but remains unverified", output)
+
+    def test_external_schedule_dependency_guarded(self):
+        # M7A.3 Failure Class E: External schedule evidence does not automatically establish internal project dependency.
+        from cineverdict_agent.agents.validators import make_schedule_conditional
+        
+        # Test Case 1: External timing introduces timing uncertainty for internal windows
+        input_text_1 = "The external launch schedule introduces timing uncertainty for the production and post-production windows."
+        expected_1 = "The external launch schedule is an external event; determine whether/how it affects the production and post-production windows."
+        self.assertEqual(make_schedule_conditional(input_text_1), expected_1)
+
+        # Test Case 2: Internal schedule needs to align with external campaign
+        input_text_2 = "The documentary schedule would need to be aligned with the external campaign."
+        expected_2 = "determine whether/how the external campaign affects the documentary schedule before deciding if alignment is required."
+        self.assertEqual(make_schedule_conditional(input_text_2), expected_2)
+
 
 if __name__ == "__main__":
     unittest.main()

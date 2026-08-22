@@ -47,24 +47,31 @@ KNOWN_LABELS = {
     "SOURCE URL",
     "PUBLISH DATE",
     "SUPPORTING EXCERPT",
-    "DIRECTOR PLAN"
+    "DIRECTOR PLAN",
+    "MARKET ANALYSIS",
+    "PRODUCTION & RISK ANALYSIS",
+    "PRODUCTION AND RISK ANALYSIS",
+    "CINEVERDICT FINAL EVALUATION"
 }
 
 
 def split_structural_line(line: str) -> tuple[str, str] | None:
     """Detects and splits known structural labels, returning (label_prefix, body) or None."""
     labels_pattern = "|".join(re.escape(label) for label in KNOWN_LABELS)
-    # Match structural headers like: "- **ANALYSIS**:" or "MISSING EVIDENCE:" or "E1 — Claim:"
+    # Match structural headers like: "### 1. FINAL VERDICT" or "- **ANALYSIS**:" or "MISSING EVIDENCE:" or "E1 — Claim:"
     pattern = re.compile(
-        r"^([ \t]*(?:-\s*|\*\s*|\d+\.\s*)?(?:\*\*|\[)?(?:E\d+\s*—\s*)?(?:" + labels_pattern + r")(?:\*\*|\])?\s*(?::|—|-)\s*)(.*)$",
+        r"^([ \t]*(?:#+\s*)?(?:-\s*|\*\s*|\+\s*|\d+\s*\.\s*)?(?:\*\*|\[)?(?:E\d+\s*(?:—|-)\s*)?(?:" + labels_pattern + r")(?:\*\*|\])?(?:\s*(?::|—|-)\s*|\s*$))(.*)$",
         re.IGNORECASE
     )
     m = pattern.match(line)
     if m:
         return m.group(1), m.group(2)
         
-    # Fallback to match standalone index headers e.g. "E1:" or "E1 —"
-    index_pattern = re.compile(r"^([ \t]*(?:-\s*|\*\s*|\d+\.\s*)?(?:E\d+)(?:\*\*|\])?\s*(?::|—|-)\s*)(.*)$", re.IGNORECASE)
+    # Fallback to match standalone index headers e.g. "### E1:" or "E1 —" or "E1"
+    index_pattern = re.compile(
+        r"^([ \t]*(?:#+\s*)?(?:-\s*|\*\s*|\+\s*|\d+\s*\.\s*)?(?:E\d+)(?:\*\*|\])?(?:\s*(?::|—|-)\s*|\s*$))(.*)$",
+        re.IGNORECASE
+    )
     m2 = index_pattern.match(line)
     if m2:
         return m2.group(1), m2.group(2)
@@ -248,7 +255,80 @@ def get_allowed_words(ctx) -> set[str]:
     return allowed
 
 
-def clean_and_validate_hidden_facts(text: str, allowed_words: set[str]) -> str:
+def get_evidence_excerpts_map(research_text: str) -> dict[str, list[str]]:
+    """Maps evidence keys (e.g. 'e1', 'e2') to their list of Supporting Excerpts."""
+    ev_map = {}
+    if not research_text:
+        return ev_map
+        
+    parts = re.split(r'\b(E\d+)\s*(?:—|-|:)', research_text, flags=re.IGNORECASE)
+    # parts[0] is pre-evidence text
+    # then parts[1] is 'E1', parts[2] is E1's text, etc.
+    for i in range(1, len(parts), 2):
+        key = parts[i].lower().strip()
+        body = parts[i+1]
+        excerpts = extract_supporting_excerpts(body)
+        if key not in ev_map:
+            ev_map[key] = []
+        ev_map[key].extend(excerpts)
+        
+    return ev_map
+
+
+def parse_cited_evidence_ids(line: str) -> list[str]:
+    """Finds all E# references cited in a line (e.g., 'E1', 'E2')."""
+    matches = re.findall(r'\bE(\d+)\b', line, flags=re.IGNORECASE)
+    return [f"e{m}" for m in matches]
+
+
+def is_analytical_or_uncertainty_line(line: str) -> bool:
+    """Detects if a line is an analytical statement, uncertainty, or next action."""
+    neutral_patterns = [
+        r"\bremains\s+unverified\b",
+        r"\bremains\s+unknown\b",
+        r"\bmissing\s+evidence\b",
+        r"\bremains\s+unresolved\b",
+        r"\bis\s+not\s+established\b",
+        r"\bis\s+unverified\b",
+        r"\bnot\s+supplied\b",
+        r"\bunspecified\b",
+        r"\bverify\s+first\b",
+        r"\bstrategic\s+action\b",
+        r"\bdetermine\s+whether\b",
+        r"\bwhether\s+[\w\s\-]+?\s+(?:exists|is|can|remains|affects)\b",
+        r"\bviability\s+remains\s+unverified\b",
+        r"\bsustainability\s+remains\s+unverified\b",
+        r"\bviability\s+is\s+not\s+established\b",
+        r"\bviability\s+is\s+unverified\b",
+        r"\bproject-specific\s+viability\b"
+    ]
+    for pattern in neutral_patterns:
+        if re.search(pattern, line, re.IGNORECASE):
+            return True
+    return False
+
+
+def lowercase_sentence_starts(text: str) -> str:
+    # Split text into sentences using standard sentence separators (. ! ?)
+    sentence_end = re.compile(r'([.!?]\s+)')
+    parts = sentence_end.split(text)
+    processed = []
+    for part in parts:
+        if re.match(r'^[.!?]\s+$', part):
+            processed.append(part)
+        else:
+            # Find the first alphabetic character and lowercase it
+            m = re.search(r'[a-zA-Z]', part)
+            if m:
+                idx = m.start()
+                processed_part = part[:idx] + part[idx].lower() + part[idx+1:]
+                processed.append(processed_part)
+            else:
+                processed.append(part)
+    return "".join(processed)
+
+
+def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None) -> str:
     """Finds proper nouns and numbers that do not exist in the allowed words set and redacts them.
     
     Processes line-by-line:
@@ -256,11 +336,8 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str]) -> str:
     - Validates only body content following the label.
     - Uses conservative morphological variations for checking.
     """
-    # Pre-expand allowed words to include all of their conservative variations
-    expanded_allowed = set()
-    for w in allowed_words:
-        for var in get_word_variations(w):
-            expanded_allowed.add(var)
+    research_text = get_research_text(ctx) if ctx else ""
+    ev_map = get_evidence_excerpts_map(research_text) if research_text else {}
 
     lines = text.split("\n")
     processed_lines = []
@@ -277,9 +354,67 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str]) -> str:
         else:
             label_part = ""
             body_part = line
+
+        # Construct the allowed words set for this line
+        cited_ids = parse_cited_evidence_ids(line)
+        if cited_ids and ev_map:
+            line_allowed = set()
+            for cid in cited_ids:
+                excerpts = ev_map.get(cid, [])
+                for exc in excerpts:
+                    words = re.findall(r"[a-zA-Z0-9\-]+", exc)
+                    for w in words:
+                        line_allowed.add(w.lower())
+                        if "-" in w:
+                            for sub in w.split("-"):
+                                if sub:
+                                    line_allowed.add(sub.lower())
             
+            # Add Director Plan words
+            director_text = get_director_text(ctx)
+            if director_text:
+                words = re.findall(r"[a-zA-Z0-9\-]+", director_text)
+                for w in words:
+                    line_allowed.add(w.lower())
+                    if "-" in w:
+                        for sub in w.split("-"):
+                            if sub:
+                                line_allowed.add(sub.lower())
+                                
+            # Add User content words
+            user_text = get_user_text(ctx)
+            if user_text:
+                words = re.findall(r"[a-zA-Z0-9\-]+", user_text)
+                for w in words:
+                    line_allowed.add(w.lower())
+                    if "-" in w:
+                        for sub in w.split("-"):
+                            if sub:
+                                line_allowed.add(sub.lower())
+                                
+            # Add system vocabulary & common words
+            for w in SYSTEM_ALLOWED_WORDS:
+                line_allowed.add(w.lower())
+            for w in COMMON_STOP_WORDS:
+                line_allowed.add(w.lower())
+        else:
+            # Fallback to global allowed words
+            line_allowed = allowed_words
+
+        # Pre-expand allowed words to include all of their conservative variations
+        expanded_allowed = set()
+        for w in line_allowed:
+            for var in get_word_variations(w):
+                expanded_allowed.add(var)
+
+        # Lowercase start of sentences in body_part to avoid false-positives only for analytical lines
+        if is_analytical_or_uncertainty_line(body_part):
+            body_part_for_extraction = lowercase_sentence_starts(body_part)
+        else:
+            body_part_for_extraction = body_part
+
         # Extract proper nouns (capitalized words) and numbers from the body part
-        significant_words = set(re.findall(r"\b[A-Z][a-zA-Z0-9\-]*\b|\b\d+\b", body_part))
+        significant_words = set(re.findall(r"\b[A-Z][a-zA-Z0-9\-]*\b|\b\d+\b", body_part_for_extraction))
         unauthorized = []
         for w in significant_words:
             w_lower = w.lower()
@@ -301,7 +436,7 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str]) -> str:
         validated_body = body_part
         for w in unauthorized:
             # Use word boundaries for precise replacement
-            validated_body = re.sub(r"\b" + re.escape(w) + r"\b", "[UNSUPPORTED]", validated_body)
+            validated_body = re.sub(r"\b" + re.escape(w) + r"\b", "[UNSUPPORTED]", validated_body, flags=re.IGNORECASE)
             
         processed_lines.append(label_part + validated_body)
         
@@ -455,25 +590,29 @@ def make_schedule_conditional(text: str) -> str:
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
 
     # 2. Advanced conditionalization mappings for schedule dependency creation
-    internal_sched = r"(?:production|filming|delivery|release|marketing|festival|distribution|project|delivery's)\s+(?:schedule|timeline|planning|plan|schedules|timelines)"
-    external_timing = r"(?:external|launch|conflicting|subject's|third-party|industry|subject|company's)\s+(?:date|dates|schedule|timeline|timing|event|events|uncertainty|uncertainties|launch\s+date|launch\s+schedule|launch\s+uncertainty)"
+    internal_sched = r"(?:production|filming|delivery|release|marketing|festival|distribution|project|delivery's|post-production|production\s+and\s+post-production|documentary|film)\s+(?:schedule|timeline|planning|plan|schedules|timelines|window|windows)"
+    external_timing = r"(?:external|launch|conflicting|subject's|third-party|industry|subject|company's|campaign)\s+(?:date|dates|schedule|timeline|timing|event|events|uncertainty|uncertainties|launch\s+date|launch\s+schedule|launch\s+uncertainty|campaign\s+schedule|campaign\s+timeline|campaign)"
 
     advanced_mappings = {
+        # Pattern: external timing introduces timing uncertainty for internal schedule
+        rf"\b({external_timing})\s+(?:introduces|creates|causes|leads\s+to)\s+(?:timing\s+)?uncertainty\s+(?:for|in)\s+(?:the\s+)?({internal_sched})\b":
+            r"\1 is an external event; determine whether/how it ___TEMP_AFFECTS___ the \2",
+
         # Pattern: internal schedule depends on/is dictated by external timing
-        rf"\b({internal_sched})\s+(?:depends\s+on|depend\s+on|is\s+dictated\s+by|are\s+dictated\s+by|is\s+impacted\s+by|are\s+impacted\s+by|is\s+governed\s+by|are\s+governed\s+by|creates\s+a\s+dependency\s+on|has\s+a\s+dependency\s+on)\s+(?:the\s+)?({external_timing})\b":
-            r"whether the \1 depends on the \2 remains unverified; verify the external schedule and determine whether/how it affects the \1",
+        rf"\b(?:the\s+)?({internal_sched})\s+(?:depends\s+on|depend\s+on|is\s+dictated\s+by|are\s+dictated\s+by|is\s+impacted\s+by|are\s+impacted\s+by|is\s+governed\s+by|are\s+governed\s+by|creates\s+a\s+dependency\s+on|has\s+a\s+dependency\s+on)\s+(?:the\s+)?({external_timing})\b":
+            r"whether the \1 depends on the \2 remains unverified; verify the external schedule and determine whether/how it ___TEMP_AFFECTS___ the \1",
 
         # Pattern: external timing impacts/dictates/determines/governs internal schedule
         rf"\b({external_timing})\s+(?:impacts|impact|dictates|dictate|determines|determine|governs|govern|shapes|shape|affects|affect)\s+(?:the\s+)?({internal_sched})\b":
-            r"\1 is an external event; determine whether/how it affects the \2",
+            r"\1 is an external event; determine whether/how it ___TEMP_AFFECTS___ the \2",
 
         # Pattern: build/structure/plan internal schedule around external timing/uncertainty
-        rf"\b(?:build|structure|plan|schedule|organize)\s+(?:the\s+)?({internal_sched})\s+(?:around|based\s+on)\s+(?:the\s+)?({external_timing})\b":
-            r"determine whether/how the \2 affects the \1 before final planning",
+        rf"\b(?:the\s+)?(?:build|structure|plan|schedule|organize)\s+(?:the\s+)?({internal_sched})\s+(?:around|based\s+on)\s+(?:the\s+)?({external_timing})\b":
+            r"determine whether/how the \2 ___TEMP_AFFECTS___ the \1 before final planning",
 
         # Pattern: internal schedule must/should/needs to align with external timing
-        rf"\b({internal_sched})\s+(?:must|should|needs\s+to|need\s+to)\s+align\s+with\s+(?:the\s+)?({external_timing})\b":
-            r"determine whether/how the \2 affects the \1 before deciding if alignment is required",
+        rf"\b(?:the\s+)?({internal_sched})\s+(?:must|should|needs\s+to|need\s+to|would\s+need|would\s+need\s+to|is\s+required\s+to)\s+(?:align\s+with|align|be\s+aligned\s+with|be\s+aligned\s+to|coordinate\s+with|be\s+coordinated\s+with)\s+(?:the\s+)?({external_timing})\b":
+            r"determine whether/how the \2 ___TEMP_AFFECTS___ the \1 before deciding if alignment is required",
     }
 
     sorted_keys = sorted(advanced_mappings.keys(), key=len, reverse=True)
@@ -489,6 +628,7 @@ def make_schedule_conditional(text: str) -> str:
 
         text = re.sub(pattern, sub_fn, text, flags=re.IGNORECASE)
         
+    text = text.replace("___TEMP_AFFECTS___", "affects")
     return text
 
 
@@ -553,7 +693,7 @@ def market_after_model_callback(callback_context, llm_response: LlmResponse) -> 
     for part in llm_response.content.parts:
         if part.text:
             orig = part.text
-            text = clean_and_validate_hidden_facts(orig, allowed_words)
+            text = clean_and_validate_hidden_facts(orig, allowed_words, ctx=ctx)
             text = neutralize_audience_assumptions(text)
             text = neutralize_evaluative_words(text, allowed_words)
             text = neutralize_evidence_strength_upgrades(text)
@@ -579,7 +719,7 @@ def production_risk_after_model_callback(
     for part in llm_response.content.parts:
         if part.text:
             orig = part.text
-            text = clean_and_validate_hidden_facts(orig, allowed_words)
+            text = clean_and_validate_hidden_facts(orig, allowed_words, ctx=ctx)
             text = neutralize_production_assumptions(text)
             text = neutralize_evaluative_words(text, allowed_words)
             text = neutralize_evidence_strength_upgrades(text)
@@ -603,7 +743,7 @@ def verdict_after_model_callback(callback_context, llm_response: LlmResponse) ->
     for part in llm_response.content.parts:
         if part.text:
             orig = part.text
-            text = clean_and_validate_hidden_facts(orig, allowed_words)
+            text = clean_and_validate_hidden_facts(orig, allowed_words, ctx=ctx)
             text = neutralize_evaluative_words(text, allowed_words)
             text = neutralize_evidence_strength_upgrades(text)
             text = make_schedule_conditional(text)

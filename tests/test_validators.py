@@ -45,7 +45,7 @@ class TestValidators(unittest.TestCase):
 
     def test_hidden_facts_redaction(self):
         allowed = {"long", "beach", "california", "vast", "space", "haven-1", "2026"}
-        
+
         # Test with forbidden location (Houston) and forbidden address (1234 Houston St)
         input_text = "The production facility is located at 1234 Houston Street in Long Beach."
         expected = "The production facility is located at [UNSUPPORTED] [UNSUPPORTED] [UNSUPPORTED] in Long Beach."
@@ -71,7 +71,7 @@ class TestValidators(unittest.TestCase):
 
     def test_neutralize_evaluative_upgrades(self):
         allowed = {"distribution", "pathway", "existed"}
-        
+
         # 'successful' should be neutralized since 'successful' is not in allowed
         input_text = "We have established successful distribution pathways."
         expected = "We have established existing/distributed distribution pathways."
@@ -104,7 +104,7 @@ class TestValidators(unittest.TestCase):
         """
 
         mock_ctx.session.events = [mock_event_director, mock_event_research]
-        
+
         mock_callback_ctx = MagicMock(spec=Context)
         mock_callback_ctx.get_invocation_context.return_value = mock_ctx
 
@@ -191,16 +191,16 @@ class TestValidators(unittest.TestCase):
 
     def test_invariant_c_strict_morphology_and_stem_safeguards(self):
         # sibilant plurals, safe possessives, and safe inflections survive ONLY when their literal source form exists in the allowed set.
-        
+
         # 1. "Launches" (plural) survives if "launch" is in allowed
         out_launch = clean_and_validate_hidden_facts("We monitored multiple Launches.", {"launch"})
         self.assertNotIn("[UNSUPPORTED]", out_launch)
         self.assertIn("Launches", out_launch)
-        
+
         # 2. "Launches" is redacted if "launch" is absent
         out_no_launch = clean_and_validate_hidden_facts("We monitored multiple Launches.", {"project"})
         self.assertIn("[UNSUPPORTED]", out_no_launch)
-        
+
         # 3. Non-plural 's' endings like Status/Analysis fail closed and do not validate Status/Analysis against truncated roots
         out_status = clean_and_validate_hidden_facts("The Status of the project.", {"statu"})
         self.assertIn("[UNSUPPORTED]", out_status) # Status should be redacted since statu is NOT its base form in variations
@@ -213,7 +213,7 @@ class TestValidators(unittest.TestCase):
     def test_invariant_fail_closed_sentence_level(self):
         # Unsupported propositions must fail closed at a sentence level rather than producing partially redacted gibberish.
         from cineverdict_agent.agents.validators import fail_closed_on_unsupported_sentences
-        
+
         # Unaltered if no unsupported
         self.assertEqual(fail_closed_on_unsupported_sentences("This is a safe sentence."), "This is a safe sentence.")
 
@@ -230,7 +230,7 @@ class TestValidators(unittest.TestCase):
     def test_evidence_strength_protection(self):
         # Historical/contextual evidence must not be upgraded to positive viability for the proposed project.
         from cineverdict_agent.agents.validators import neutralize_evidence_strength_upgrades
-        
+
         input_text = "Demand multiples of other space documentaries demonstrate market viability for the proposed film."
         expected = "is historical/contextual evidence, but project-specific viability remains unverified"
         self.assertIn(expected, neutralize_evidence_strength_upgrades(input_text))
@@ -242,7 +242,7 @@ class TestValidators(unittest.TestCase):
     def test_schedule_dependency_protection(self):
         # External launch dates do not automatically create an internal project dependency.
         from cineverdict_agent.agents.validators import make_schedule_conditional
-        
+
         input_text = "The external launch date impacts the production schedule."
         expected = "The external launch date is an external event; determine whether/how it affects the production schedule."
         self.assertEqual(make_schedule_conditional(input_text), expected)
@@ -284,7 +284,7 @@ class TestValidators(unittest.TestCase):
         Supporting Excerpt: "Haven-1 is planned to launch in 2026."
         """
         mock_ctx.session.events = [mock_event_research]
-        
+
         # Scenario 1: Line cites E1 and contains words from E1 excerpt -> survives!
         line_supported = "The primary facility of Vast Space is in Long Beach [E1]."
         # We don't supply allowed_words (rely on E1 citation mapping)
@@ -300,7 +300,7 @@ class TestValidators(unittest.TestCase):
     def test_analytical_and_neutral_language_survival(self):
         # M7A.3 Failure Class C/D: Neutral analytical or uncertainty statements survive without globally allowlisting their substantive nouns.
         allowed = set() # Empty allowed set
-        
+
         # These are lowercase and contain neutral patterns, so they should survive without any redactions
         analytical_lines = [
             "project-specific viability remains unverified.",
@@ -322,7 +322,7 @@ class TestValidators(unittest.TestCase):
     def test_external_schedule_dependency_guarded(self):
         # M7A.3 Failure Class E: External schedule evidence does not automatically establish internal project dependency.
         from cineverdict_agent.agents.validators import make_schedule_conditional
-        
+
         # Test Case 1: External timing introduces timing uncertainty for internal windows
         input_text_1 = "The external launch schedule introduces timing uncertainty for the production and post-production windows."
         expected_1 = "The external launch schedule is an external event; determine whether/how it affects the production and post-production windows."
@@ -335,7 +335,7 @@ class TestValidators(unittest.TestCase):
 
     def test_m7a4_semantic_roles_and_neutralization(self):
         # Deterministic regression tests covering M7A.4 requirements
-        
+
         # A. Neutral analytical language survives without global substantive allowlisting.
         out_a = clean_and_validate_hidden_facts("Project-specific viability remains unverified.", set())
         self.assertEqual(out_a, "Project-specific viability remains unverified.")
@@ -566,7 +566,7 @@ class TestValidators(unittest.TestCase):
             # 12. Works for Market, Production/Risk, and Verdict callback paths if role context is available
             mock_callback_ctx = MagicMock(spec=Context)
             mock_callback_ctx.get_invocation_context.return_value = mock_ctx
-            
+
             # Market callback
             llm_response = LlmResponse(content=types.Content(role="model", parts=[types.Part(text="Seattle is beautiful.")]))
             stderr_capture = io.StringIO()
@@ -826,7 +826,7 @@ class TestValidators(unittest.TestCase):
         ### E1
         - **Supporting Excerpt**:
         > "Vast Space has official authorization."
-        
+
         ### E2
         - **Supporting Excerpt**:
         > "The launch campaign begins in autumn."
@@ -896,7 +896,7 @@ class TestValidators(unittest.TestCase):
         from google.adk.models.llm_response import LlmResponse
         mock_callback_context = MagicMock()
         mock_callback_context.get_invocation_context.return_value = mock_ctx
-        
+
         # 28. M7A.2 sentence fail-closed remains intact.
         self.assertEqual(fail_closed_on_unsupported_sentences("Factual statement with [UNSUPPORTED] word."), "[Factual proposition unverified due to missing evidence.]")
 
@@ -926,7 +926,7 @@ class TestValidators(unittest.TestCase):
         ### E1
         - **Supporting Excerpt**:
         > "Vast Space has official authorization."
-        
+
         ### E2
         - **Supporting Excerpt**:
         > "The launch campaign begins in autumn."
@@ -938,12 +938,12 @@ class TestValidators(unittest.TestCase):
         # 1. Structural label splitting with bracketed citations
         line1 = "VERIFIED EVIDENCE [E1]: The source states that the external program has a stated target."
         line2 = "ANALYSIS [based on E1]: The source establishes the external target."
-        
+
         split1 = split_structural_line(line1)
         self.assertIsNotNone(split1)
         self.assertEqual(split1[0], "VERIFIED EVIDENCE [E1]: ")
         self.assertEqual(split1[1], "The source states that the external program has a stated target.")
-        
+
         split2 = split_structural_line(line2)
         self.assertIsNotNone(split2)
         self.assertEqual(split2[0], "ANALYSIS [based on E1]: ")
@@ -998,23 +998,23 @@ class TestValidators(unittest.TestCase):
         mock_event_director = MagicMock()
         mock_event_director.author = "director_agent"
         mock_event_director.output = "DIRECTOR PLAN: Ensure we align with Vast Space and check if Haven-1 launches in 2026."
-        
+
         mock_event_research = MagicMock()
         mock_event_research.author = "research_agent"
         mock_event_research.output = """
         ### E1
         - **Supporting Excerpt**:
         > "Vast Space has its primary facility located in Long Beach, California."
-        
+
         ### E2
         - **Supporting Excerpt**:
         > "The commercial space station Haven-1 is planned to launch no earlier than 2026."
         """
-        
+
         mock_event_user = MagicMock()
         mock_event_user.author = "user"
         mock_event_user.output = "CineVerdict query about Haven-1."
-        
+
         mock_ctx.session.events = [mock_event_director, mock_event_research, mock_event_user]
         mock_callback_context = MagicMock(spec=Context)
         mock_callback_context.get_invocation_context.return_value = mock_ctx
@@ -1204,6 +1204,233 @@ class TestValidators(unittest.TestCase):
 
         # 33. Parallel Search contract remains unchanged (We did not change parallel_search.py or any search tools)
         self.assertTrue(True)
+
+    def test_m7a12_live_transcript_replay_and_semantic_closure(self):
+        # M7A.12: Live transcript replay and semantic closure tests
+        from google.adk.models.llm_response import LlmResponse
+        from google.genai import types
+        from google.adk import Context
+        from cineverdict_agent.agents.validators import (
+            market_after_model_callback,
+            production_risk_after_model_callback,
+            verdict_after_model_callback
+        )
+
+        # Initialize mock context with rich inputs
+        mock_ctx = MagicMock()
+
+        # Setup director plan
+        mock_event_director = MagicMock()
+        mock_event_director.author = "director_agent"
+        mock_event_director.output = "DIRECTOR PLAN: Ensure we align the documentary schedule with Vast Space and check if Haven-1 launches in 2026."
+
+        # Setup research ledger
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = """
+        ### E1
+        - **Supporting Excerpt**:
+        > "Vast Space has its primary facility located in Long Beach, California."
+
+        ### E2
+        - **Supporting Excerpt**:
+        > "The commercial space station Haven-1 is planned to launch no earlier than 2026."
+        """
+
+        # Setup user query
+        mock_event_user = MagicMock()
+        mock_event_user.author = "user"
+        mock_event_user.output = "CineVerdict query about Haven-1."
+
+        mock_ctx.session.events = [mock_event_director, mock_event_research, mock_event_user]
+        mock_callback_context = MagicMock(spec=Context)
+        mock_callback_context.get_invocation_context.return_value = mock_ctx
+
+        def run_market(text):
+            llm_response = LlmResponse(content=types.Content(role="model", parts=[types.Part(text=text)]))
+            res = market_after_model_callback(mock_callback_context, llm_response)
+            return res.content.parts[0].text if res else text
+
+        def run_production(text):
+            llm_response = LlmResponse(content=types.Content(role="model", parts=[types.Part(text=text)]))
+            res = production_risk_after_model_callback(mock_callback_context, llm_response)
+            return res.content.parts[0].text if res else text
+
+        def run_verdict(text):
+            llm_response = LlmResponse(content=types.Content(role="model", parts=[types.Part(text=text)]))
+            res = verdict_after_model_callback(mock_callback_context, llm_response)
+            return res.content.parts[0].text if res else text
+
+        # --- REQUIRED POSITIVE REGRESSIONS ---
+
+        # MARKET
+        # 1. Grounded factual evidence survives
+        out = run_market("### VERIFIED EVIDENCE\n\nVERIFIED EVIDENCE [E1]: Vast Space has its primary facility located in Long Beach, California.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+        self.assertNotIn("unverified", out.lower())
+
+        # 2. Multi-sentence grounded evidence survives
+        out = run_market("VERIFIED EVIDENCE [E2]: The commercial space station Haven-1 is planned to launch no earlier than 2026. This launch timeline is subject to external regulatory clearance.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 3. Grounded fact + analytical consequence survives
+        out = run_market("### ANALYSIS\n\nANALYSIS [based on E1]: Vast Space facility in Long Beach is verified, although project-specific viability remains unverified.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 4. Missing-evidence language survives
+        out = run_market("### MISSING EVIDENCE\n\nMISSING EVIDENCE: Audience demand and commercial viability remain unverified.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 5. Unknown audience/viability language survives
+        out = run_market("Whether a reachable audience exists remains unknown.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # PRODUCTION/RISK
+        # 6. Grounded factual evidence survives
+        out = run_production("VERIFIED EVIDENCE [E1]: Vast Space has its primary facility located in Long Beach, California.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 7. Numbered analytical children inherit ANALYSIS context
+        out = run_production("### ANALYSIS\n\n1. The production timeline must coordinate with the launch window.\n2. Timeline alignment is crucial.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 8. Missing-evidence children inherit MISSING EVIDENCE context
+        out = run_production("### MISSING EVIDENCE\n\n1. Staffing requirements.\n2. Permissions for facilities.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 9. Assumption children receive correct ASSUMPTION semantics
+        out = run_production("### ASSUMPTION\n\n1. Access has not been established and remains unverified.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 10. Unknown project inputs remain unknown
+        out = run_production("### ASSUMPTION\n\n- Access remains unknown.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 11. Mixed grounded + analytical lines survive correctly
+        out = run_production("### ANALYSIS\n\n- [E2] Haven-1 launch is planned for 2026, which implies a potential timing adjustment.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # VERDICT
+        # 12. All valid numbered Decisive Reasons survive independently
+        out = run_verdict("### DECISIVE REASONS\n\n1. [E1] Vast Space facility in Long Beach is verified.\n2. [E2] Haven-1 launch timing is planned for 2026.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 13. Grounded fact inside Decisive Reason remains evidence-scoped
+        out = run_verdict("### DECISIVE REASONS\n\n1. [E1] Vast Space facility is in Long Beach.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 14. Analytical consequence inside Decisive Reason survives
+        out = run_verdict("### DECISIVE REASONS\n\n1. [E1] Vast Space facility in Long Beach is verified; therefore, project viability remains to be verified.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 15. Valid Unresolved Uncertainties survive
+        out = run_verdict("### UNRESOLVED UNCERTAINTIES\n\n1. Budget remains unspecified.\n2. Permissions are unverified.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 16. Numbered Required Next Actions inherit action context
+        out = run_verdict("### REQUIRED NEXT ACTIONS\n\n1. Determine whether permissions are required.\n2. Establish the budget.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 17. Multi-clause actions survive when non-factual
+        out = run_verdict("### REQUIRED NEXT ACTIONS\n\n1. Verify whether access is available and coordinate the staffing.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 18. Citation-prefixed actions survive
+        out = run_verdict("### REQUIRED NEXT ACTIONS\n\n1. [E2] Determine whether the launch schedule affects the timeline.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 19. VERIFY FIRST action survives
+        out = run_verdict("VERIFY FIRST [E2, MISSING EVIDENCE]: Investigate whether launch schedule changes affect the production's release timeline.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 20. Determine action survives
+        out = run_verdict("### REQUIRED NEXT ACTIONS\n\nDetermine whether funding is secured.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 21. Establish action survives
+        out = run_verdict("### REQUIRED NEXT ACTIONS\n\nEstablish the project's internal schedule.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 22. Confirm action survives
+        out = run_verdict("### REQUIRED NEXT ACTIONS\n\nConfirm if access is granted.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 23. Identify action survives
+        out = run_verdict("### REQUIRED NEXT ACTIONS\n\nIdentify the target audience.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # SEMANTIC EPISTEMICS
+        # 24. Unknown external/internal schedule relationship remains unknown
+        out = run_production("### ASSUMPTION\n\n- The relationship between the internal schedule and the external schedule is unverified.")
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 25. Model-invented "assume independence" is neutralized
+        out = run_production("### ASSUMPTION\n\n- We assume the internal schedule is independent of the external schedule.")
+        self.assertIn("The relationship between the internal schedule and the external schedule is unverified.", out)
+
+        # 26. Model-invented "assume no effect" is neutralized
+        out = run_production("### ASSUMPTION\n\n- We assume the external schedule will not affect production.")
+        self.assertIn("Whether the external schedule affects the internal production timeline remains unverified.", out)
+
+        # --- REQUIRED NEGATIVE CONTROLS ---
+
+        # 1. Ungrounded company/entity factual claim fails
+        out = run_market("### VERIFIED EVIDENCE\n\nVERIFIED EVIDENCE [E1]: Acme Corporation has its facility in Long Beach.")
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+
+        # 2. Ungrounded location factual claim fails
+        out = run_market("### VERIFIED EVIDENCE\n\nVERIFIED EVIDENCE [E1]: Vast Space has its facility in Seattle.")
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+
+        # 3. Ungrounded factual number fails
+        out = run_market("### VERIFIED EVIDENCE\n\nVERIFIED EVIDENCE [E1]: Vast Space has 42 facilities in Long Beach.")
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+
+        # 4. Ungrounded factual date fails
+        out = run_market("### VERIFIED EVIDENCE\n\nVERIFIED EVIDENCE [E1]: Vast Space primary facility in Long Beach opened in 2029.")
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+
+        # 5. Unsupported budget value fails
+        out = run_verdict("### DECISIVE REASONS\n\n1. The budget is $25 million.")
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+
+        # 6. Unsupported audience-size value fails
+        out = run_market("### ANALYSIS\n\nWe estimated an audience of 1000000 viewers.")
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+
+        # 7. Unsupported access-granted claim fails
+        out = run_production("### VERIFIED EVIDENCE\n\nAccess was granted by SpaceX.")
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+
+        # 8. Unsupported permission-granted claim fails
+        out = run_production("### VERIFIED EVIDENCE\n\nFAA granted permission.")
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+
+        # 9. Unsupported schedule claim fails
+        out = run_production("### VERIFIED EVIDENCE\n\nThe internal filming schedule is confirmed for December 2027.")
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+
+        # 10. Unsupported positive audience-demand claim fails
+        out = run_market("### VERIFIED EVIDENCE\n\nAudience demand is high.")
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+
+        # 11. Unsupported factual sentence inside an action does not gain authority merely from REQUIRED NEXT ACTIONS context
+        out = run_verdict("### REQUIRED NEXT ACTIONS\n\nVerify that SpaceX granted the contract.")
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+
+        # 12. Unsupported factual sentence inside an uncertainty section does not gain authority merely from UNRESOLVED UNCERTAINTIES context
+        out = run_verdict("### UNRESOLVED UNCERTAINTIES\n\nWhether SpaceX will launch Haven-1.")
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+
+        # 13. Unsupported claim of schedule independence fails or neutralizes when independence is not evidenced
+        out = run_production("### ASSUMPTION\n\n- The internal schedule is independent of the external schedule.")
+        # Neutralized to unverified
+        self.assertNotIn("independent", out.lower())
+
+        # 14. Unsupported claim of schedule dependence fails or neutralizes when dependence is not evidenced
+        out = run_production("### VERIFIED EVIDENCE\n\n- The internal schedule depends on the external launch schedule.")
+        # Neutralized to unverified conditional status
+        self.assertIn("unverified", out.lower())
 
 
 if __name__ == "__main__":

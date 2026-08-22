@@ -28,6 +28,9 @@ COMMON_STOP_WORDS = {
     "further", "once", "here", "there", "all", "any", "both", "each", "few", "more", "most", "other",
     "some", "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very", "s", "t",
     "just", "don", "shouldn", "now", "anyway", "however", "therefore", "furthermore", "thus", "likewise",
+    "although", "since", "given", "while", "moreover", "consequently", "indeed", "unless", "until", "despite",
+    "first", "second", "third", "finally", "hence", "otherwise", "instead", "specifically", "concerning",
+    "regarding", "meanwhile", "whether", "either", "neither", "each", "every",
 }
 
 # Strictly minimal outcomes, technical indexes, and grammatical enums (no content-bearing words)
@@ -97,6 +100,8 @@ ANALYTICAL_SUBSTANTIVE_WORDS = {
     "establish", "establishes", "established", "establishing",
     "compare", "compares", "compared", "comparing", "comparison", "comparisons",
     "reach", "reached",
+    "affect", "affects", "affected", "affecting",
+    "impact", "impacts", "impacted", "impacting",
     
     # Uncertainty/missing evidence nouns and adjectives
     "unverified", "unknown", "unresolved", "unspecified", "unclear", "undetermined",
@@ -127,6 +132,14 @@ ANALYTICAL_SUBSTANTIVE_WORDS = {
     "confident",
     "adjustment", "adjustments",
     "connection", "connections",
+    "permission", "permissions", "requirement", "requirements",
+    "agreement", "agreements", "clearance", "clearances",
+    "licensing", "license", "licenses", "authority", "authorities",
+    "regulator", "regulators", "software", "crew", "crews", "staff", "staffing",
+    "partnership", "partnerships", "partner", "partners",
+    "precedent", "precedents", "consequence", "consequences",
+    "strategy", "strategies", "independent", "independence",
+    "documentary", "documentaries", "film", "films", "premise", "premises", "story", "stories",
     
     # Grammatical/generic words that might get capitalized at sentence starts
     "the", "a", "an", "and", "or", "but", "if", "because", "as", "what", "where", "when", "why", "how",
@@ -307,6 +320,7 @@ def neutralize_positive_assumptions(text: str) -> str:
     """
     lines = text.split("\n")
     processed_lines = []
+    current_section = None
     
     for line in lines:
         if not line.strip():
@@ -317,6 +331,10 @@ def neutralize_positive_assumptions(text: str) -> str:
         split_res = split_structural_line(line)
         if split_res:
             label_part, body_part = split_res
+            for label in KNOWN_LABELS:
+                if label.lower() in label_part.lower():
+                    current_section = label
+                    break
         else:
             label_part = ""
             body_part = line
@@ -341,11 +359,13 @@ def neutralize_positive_assumptions(text: str) -> str:
             s_clean = sentence.strip().lower()
             
             # Match positive assumption patterns
+            is_in_assumption_sec = current_section and current_section.upper() in ("ASSUMPTION", "HYPOTHESIS")
             has_assumption_intro = (
                 "assumed" in s_clean or 
                 "assumption" in s_clean or 
                 "assume" in s_clean or 
-                "hypothesis" in s_clean
+                "hypothesis" in s_clean or
+                is_in_assumption_sec
             )
             
             if has_assumption_intro:
@@ -388,6 +408,16 @@ def neutralize_positive_assumptions(text: str) -> str:
                             sentence,
                             flags=re.IGNORECASE
                         )
+
+                # Schedule / Timeline / Independence / Affect
+                elif any(x in s_clean for x in ["schedule", "timeline", "timing", "independent", "independence", "affect", "affects", "impact", "impacts"]):
+                    if not any(x in s_clean for x in ["unverified", "unknown", "unspecified", "not established", "not been", "remains to be"]):
+                        if "independent" in s_clean or "independence" in s_clean:
+                            sentence = "The relationship between the internal schedule and the external schedule is unverified."
+                        elif any(x in s_clean for x in ["affect", "affects", "impact", "impacts"]):
+                            sentence = "Whether the external schedule affects the internal production timeline remains unverified."
+                        else:
+                            sentence = "The production timeline and schedule relationship remains unverified."
 
             processed_sentences.append(sentence)
             
@@ -1173,7 +1203,7 @@ def make_schedule_conditional(text: str) -> str:
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
 
     # 2. Advanced conditionalization mappings for schedule dependency creation
-    internal_sched = r"(?:production|filming|delivery|release|marketing|festival|distribution|project|delivery's|post-production|production\s+and\s+post-production|documentary|film)\s+(?:schedule|timeline|planning|plan|schedules|timelines|window|windows|date|dates|activities|activity|focus)"
+    internal_sched = r"(?:production|filming|delivery|release|marketing|festival|distribution|project|delivery's|post-production|production\s+and\s+post-production|documentary|film|internal|proposed)\s+(?:schedule|timeline|planning|plan|schedules|timelines|window|windows|date|dates|activities|activity|focus)"
     external_timing = r"(?:external|launch|conflicting|subject's|third-party|industry|subject|company's|campaign|timing)\s+(?:date|dates|schedule|timeline|timing|event|events|uncertainty|uncertainties|launch\s+date|launch\s+schedule|launch\s+uncertainty|campaign\s+schedule|campaign\s+timeline|campaign|adjustments?|delays?|changes?|slips?|movements?|history|history\s+of\s+timing\s+adjustments|historical\s+schedule\s+changes|timing\s+adjustments)"
 
     advanced_mappings = {

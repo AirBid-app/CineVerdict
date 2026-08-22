@@ -597,6 +597,138 @@ class TestValidators(unittest.TestCase):
             elif "CINEVERDICT_VALIDATOR_TRACE" in os.environ:
                 del os.environ["CINEVERDICT_VALIDATOR_TRACE"]
 
+    def test_m7a7_regression_boundary(self):
+        import io
+        import sys
+        import os
+        from unittest.mock import patch, MagicMock
+        from google.adk import Context
+        from google.adk.models.llm_response import LlmResponse
+        from google.genai import types
+        from cineverdict_agent.agents.validators import (
+            get_evidence_excerpts_map,
+            classify_sentence_role,
+            clean_and_validate_hidden_facts,
+            fail_closed_on_unsupported_sentences,
+            market_after_model_callback,
+            production_risk_after_model_callback,
+            verdict_after_model_callback
+        )
+
+        # A, B, C, D: Evidence entry separators parsed
+        seps = {
+            "hyphen": "E1 - Claim: Some Claim\nSupporting Excerpt: Long Beach",
+            "en-dash": "E1 \u2013 Claim: Some Claim\nSupporting Excerpt: Long Beach",
+            "em-dash": "E1 \u2014 Claim: Some Claim\nSupporting Excerpt: Long Beach",
+            "colon": "E1: Claim: Some Claim\nSupporting Excerpt: Long Beach"
+        }
+        for name, text in seps.items():
+            ev_map = get_evidence_excerpts_map(text)
+            self.assertIn("e1", ev_map, f"Failed parsing with {name} separator")
+            self.assertEqual(ev_map["e1"], ["Long Beach"], f"Wrong excerpt parsed for {name}")
+
+        # E, F: Citation/Markdown prefix action classification
+        self.assertEqual(classify_sentence_role("[E1]: Verify the applicable conditions."), "action")
+        self.assertEqual(classify_sentence_role("* [E2] Determine whether additional authorization is required."), "action")
+        self.assertEqual(classify_sentence_role("- **VERIFY FIRST**: Confirm the applicable terms."), "action")
+        self.assertEqual(classify_sentence_role("1. [E3] Evaluate whether the proposed use satisfies the stated conditions."), "action")
+
+        # Mock Context with E1 evidence
+        mock_ctx = MagicMock()
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = """
+        E1 — Claim: Vast Space headquarters is in Long Beach.
+        Supporting Excerpt: "Vast Space has its primary facility located in Long Beach."
+        """
+        mock_ctx.session.events = [mock_event_research]
+
+        # G. Valid grounded proper noun inside action survives
+        line_grounded = "Verify the access conditions at Long Beach [E1]."
+        out_grounded = clean_and_validate_hidden_facts(line_grounded, set(), ctx=mock_ctx)
+        self.assertEqual(out_grounded, line_grounded)
+
+        # H. Ungrounded proper noun inside action is neutralized
+        # Regulators
+        line_reg = "Verify FAA licensing requirements."
+        out_reg = clean_and_validate_hidden_facts(line_reg, set(), ctx=mock_ctx)
+        self.assertIn("Determine which regulator, if any, applies and verify the applicable licensing requirements.", out_reg)
+        self.assertNotIn("[UNSUPPORTED]", out_reg)
+
+        # Locations (after)
+        line_loc_after = "Confirm access at Seattle."
+        out_loc_after = clean_and_validate_hidden_facts(line_loc_after, set(), ctx=mock_ctx)
+        self.assertIn("Confirm which location, if any, is relevant and verify the applicable access conditions.", out_loc_after)
+        self.assertNotIn("[UNSUPPORTED]", out_loc_after)
+
+        # Locations (before)
+        line_loc_before = "Verify Seattle facility permissions."
+        out_loc_before = clean_and_validate_hidden_facts(line_loc_before, set(), ctx=mock_ctx)
+        self.assertIn("Confirm which location, if any, is relevant and verify the applicable permissions.", out_loc_before)
+        self.assertNotIn("[UNSUPPORTED]", out_loc_before)
+
+        # I. Ungrounded number/date inside action does not survive (fails closed)
+        line_num = "Determine whether the 42 crew members can be supported."
+        out_num_raw = clean_and_validate_hidden_facts(line_num, set(), ctx=mock_ctx)
+        out_num = fail_closed_on_unsupported_sentences(out_num_raw)
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_num)
+
+        # J. Generic verification action survives
+        line_generic = "Verify the applicable access conditions before commitment."
+        out_generic = clean_and_validate_hidden_facts(line_generic, set(), ctx=mock_ctx)
+        self.assertEqual(out_generic, line_generic)
+
+        # K. Citation-scoped evidence remains correctly selected
+        # "Long Beach" is allowed in E1, but Seattle is not. Calling it with E1 cite:
+        line_scoped = "Verify access at Seattle [E1]."
+        out_scoped_raw = clean_and_validate_hidden_facts(line_scoped, set(), ctx=mock_ctx)
+        # Neutralization changes "access at Seattle" to generic
+        self.assertIn("Confirm which location, if any, is relevant", out_scoped_raw)
+        self.assertNotIn("[UNSUPPORTED]", out_scoped_raw)
+
+        # L. Sentence fail-closed remains intact
+        out_fail = fail_closed_on_unsupported_sentences("Seattle is [UNSUPPORTED].")
+        self.assertEqual(out_fail, "[Factual proposition unverified due to missing evidence.]")
+
+        # M. Structural headings remain intact
+        out_heading = clean_and_validate_hidden_facts("### 3. DECISIVE REASONS", set(), ctx=mock_ctx)
+        self.assertEqual(out_heading, "### 3. DECISIVE REASONS")
+
+        # N. Unknown-vs-assumption protection remains intact
+        from cineverdict_agent.agents.validators import neutralize_positive_assumptions
+        out_ass = neutralize_positive_assumptions("It is assumed that a viable audience is reachable.")
+        self.assertIn("Audience demand remains unverified", out_ass)
+
+        # O. External→internal schedule closure remains intact
+        from cineverdict_agent.agents.validators import make_schedule_conditional
+        out_sched = make_schedule_conditional("The external launch date impacts the production schedule.")
+        self.assertIn("determine whether/how it affects", out_sched)
+
+        # P, Q. Trace OFF / ON behaviors
+        old_env = os.environ.get("CINEVERDICT_VALIDATOR_TRACE")
+        try:
+            # Trace OFF
+            if "CINEVERDICT_VALIDATOR_TRACE" in os.environ:
+                del os.environ["CINEVERDICT_VALIDATOR_TRACE"]
+            stderr_capture = io.StringIO()
+            with patch('sys.stderr', stderr_capture):
+                clean_and_validate_hidden_facts("Verify the access conditions.", set(), ctx=mock_ctx)
+            self.assertEqual(stderr_capture.getvalue(), "")
+
+            # Trace ON
+            os.environ["CINEVERDICT_VALIDATOR_TRACE"] = "1"
+            stderr_capture = io.StringIO()
+            with patch('sys.stderr', stderr_capture):
+                clean_and_validate_hidden_facts("Verify the access conditions.", set(), ctx=mock_ctx)
+            trace_content = stderr_capture.getvalue()
+            self.assertIn("[CINEVERDICT TRACE]", trace_content)
+            self.assertIn("[Stage 5] Semantic proposition classification:", trace_content)
+        finally:
+            if old_env is not None:
+                os.environ["CINEVERDICT_VALIDATOR_TRACE"] = old_env
+            elif "CINEVERDICT_VALIDATOR_TRACE" in os.environ:
+                del os.environ["CINEVERDICT_VALIDATOR_TRACE"]
+
 
 if __name__ == "__main__":
     unittest.main()

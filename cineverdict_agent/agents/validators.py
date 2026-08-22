@@ -140,6 +140,41 @@ ANALYTICAL_SUBSTANTIVE_WORDS = {
 }
 
 
+def get_normalized_sentence_for_classification(sentence: str) -> str:
+    """Strips recognized structural prefixes from the start of a sentence for classification purposes.
+    
+    Retains the original text for output and citation handling.
+    """
+    s = sentence.strip()
+    
+    # Define KNOWN_LABELS prefix pattern
+    labels_pattern = "|".join(re.escape(label) for label in KNOWN_LABELS)
+    
+    while True:
+        orig = s
+        
+        # 1. Strip Markdown bullet markers or numbered list markers
+        s = re.sub(r'^([ \t]*(?:-\s*|\*\s*|\+\s*|\d+\s*\.\s*))', '', s, flags=re.IGNORECASE)
+        
+        # 2. Strip bold/markdown wrappers at start of prefix area
+        s = re.sub(r'^([ \t]*\*\*|\*)', '', s)
+        
+        # 3. Strip explicit citation prefixes like [E1], [E1 and E2], [MISSING EVIDENCE], etc.
+        s = re.sub(r'^([ \t]*\[(?:E\d+|MISSING EVIDENCE|based on E\d+|secondary evidence|verified evidence)[^\]]*\]:?\s*)', '', s, flags=re.IGNORECASE)
+        
+        # 4. Strip known labels, e.g. VERIFY FIRST, SUPPORTED ACTION, ANALYSIS, etc.
+        s = re.sub(r'^([ \t]*(?:' + labels_pattern + r')(?:\*\*|\])?(?:\s*(?::|—|-)\s*|\s*$))', '', s, flags=re.IGNORECASE)
+        
+        # 5. Strip any leftover punctuation/bold markers and whitespace from the start
+        s = re.sub(r'^([ \t]*(?:\*\*|\*|:|\—|-)\s*)', '', s)
+        
+        s = s.strip()
+        if s == orig:
+            break
+            
+    return s
+
+
 def classify_sentence_role(sentence: str) -> str:
     """Classifies a sentence/clause into one of the semantic roles:
     - 'structural': structural heading/label
@@ -148,7 +183,8 @@ def classify_sentence_role(sentence: str) -> str:
     - 'analytical_assumption': Analytical interpretation / assumption
     - 'factual': Factual evidence assertion
     """
-    s = sentence.strip().lower()
+    normalized_s = get_normalized_sentence_for_classification(sentence)
+    s = normalized_s.strip().lower()
     if not s:
         return "structural"
         
@@ -451,7 +487,7 @@ def extract_supporting_excerpts(research_text: str) -> list[str]:
             line_stripped = line.strip()
             # Stop if the line starts with an evidence block marker or a standard label
             if (
-                re.match(r"^E\d+\s*—", line_stripped, re.IGNORECASE) or
+                re.match(r"^E\d+\s*(?:[\u2014\u2013\-:])", line_stripped, re.IGNORECASE) or
                 line_stripped.startswith("Claim:") or
                 line_stripped.startswith("Verification Status:") or
                 line_stripped.startswith("Source Title:") or
@@ -566,7 +602,7 @@ def get_evidence_excerpts_map(research_text: str) -> dict[str, list[str]]:
     if not research_text:
         return ev_map
         
-    parts = re.split(r'\b(E\d+)\s*(?:—|-|:)', research_text, flags=re.IGNORECASE)
+    parts = re.split(r'\b(E\d+)\s*(?:[\u2014\u2013\-:])', research_text, flags=re.IGNORECASE)
     # parts[0] is pre-evidence text
     # then parts[1] is 'E1', parts[2] is E1's text, etc.
     for i in range(1, len(parts), 2):
@@ -611,6 +647,111 @@ def is_analytical_or_uncertainty_line(line: str) -> bool:
         if re.search(pattern, line, re.IGNORECASE):
             return True
     return False
+
+
+def neutralize_unauthorized_in_action(sentence: str, unauthorized_words: list[str]) -> str:
+    """Attempts to deterministically neutralize unauthorized proper nouns or numbers in an action sentence.
+    
+    Returns the neutralized sentence if successful, or None if it cannot be safely neutralized
+    (in which case it will fail closed). Modifies the unauthorized_words list in place if neutralized.
+    """
+    ns = sentence
+    unauth_set = set(unauthorized_words)
+    
+    # 1. Regulators (e.g. "FAA licensing requirements")
+    for w in list(unauth_set):
+        if w.isupper() or w[0].isupper():
+            verb_match = re.match(r'^(\s*(?:-\s*|\*\s*|\d+\.\s*)?)(verify|determine|evaluate|assess|confirm|investigate|obtain|coordinate|align|track|clarify|ensure|analyze|identify|explore|mitigate|address|check|review|compare|establish)\b', ns, re.IGNORECASE)
+            if verb_match:
+                prefix = verb_match.group(1)
+                verb = verb_match.group(2)
+                verb_body = ns[len(prefix) + len(verb):].strip()
+                
+                reg_pattern = re.compile(
+                    r"\b" + re.escape(w) + r"\s+(licens(?:ing|e)|clearance|authorization|approval|permit|pathway|requirement)s?\b",
+                    re.IGNORECASE
+                )
+                if reg_pattern.search(verb_body):
+                    verb_body_replaced = reg_pattern.sub(r"the applicable \1", verb_body)
+                    ns = f"{prefix}Determine which regulator, if any, applies and verify {verb_body_replaced}"
+                    unauth_set.discard(w)
+                    break
+
+    # 2. Locations with location word after (e.g. "access at Long Beach", "permissions in Seattle")
+    for w in list(unauth_set):
+        if w[0].isupper():
+            verb_match = re.match(r'^(\s*(?:-\s*|\*\s*|\d+\.\s*)?)(verify|determine|evaluate|assess|confirm|investigate|obtain|coordinate|align|track|clarify|ensure|analyze|identify|explore|mitigate|address|check|review|compare|establish)\b', ns, re.IGNORECASE)
+            if verb_match:
+                prefix = verb_match.group(1)
+                verb = verb_match.group(2)
+                verb_body = ns[len(prefix) + len(verb):].strip()
+                
+                loc_pattern = re.compile(
+                    r"\b(access|facility|facilities|permission|permissions|conditions|coordination|filming|production)\s+(?:at|in|within|for)\s+([^.\?!,]+)\b",
+                    re.IGNORECASE
+                )
+                m = loc_pattern.search(verb_body)
+                if m:
+                    noun_part = m.group(1)
+                    loc_part = m.group(2).strip()
+                    if w in loc_part or w.lower() in loc_part.lower():
+                        if noun_part.lower() == "access":
+                            generic_phrase = "the applicable access conditions"
+                        elif noun_part.lower() in ("facility", "facilities"):
+                            generic_phrase = "the applicable facility conditions"
+                        elif noun_part.lower() in ("permission", "permissions"):
+                            generic_phrase = "the applicable permissions"
+                        else:
+                            generic_phrase = f"the applicable {noun_part.lower()}"
+                            
+                        whole_phrase_pattern = re.compile(re.escape(m.group(0)))
+                        verb_body_replaced = whole_phrase_pattern.sub(generic_phrase, verb_body)
+                        ns = f"{prefix}Confirm which location, if any, is relevant and verify {verb_body_replaced}"
+                        
+                        loc_words = re.findall(r"\b[A-Za-z0-9\-]+\b", loc_part)
+                        for lw in loc_words:
+                            unauth_set.discard(lw)
+                        break
+
+    # 3. Locations with location word before (e.g. "Seattle facility permissions")
+    for w in list(unauth_set):
+        if w[0].isupper():
+            verb_match = re.match(r'^(\s*(?:-\s*|\*\s*|\d+\.\s*)?)(verify|determine|evaluate|assess|confirm|investigate|obtain|coordinate|align|track|clarify|ensure|analyze|identify|explore|mitigate|address|check|review|compare|establish)\b', ns, re.IGNORECASE)
+            if verb_match:
+                prefix = verb_match.group(1)
+                verb = verb_match.group(2)
+                verb_body = ns[len(prefix) + len(verb):].strip()
+                
+                loc_pattern_before = re.compile(
+                    r"\b([A-Z][a-zA-Z0-9\s\-]+)\s+(access|facility|facilities|permission|permissions|conditions|coordination|filming|production)s?\b",
+                    re.IGNORECASE
+                )
+                m2 = loc_pattern_before.search(verb_body)
+                if m2:
+                    loc_part = m2.group(1).strip()
+                    noun_part = m2.group(2)
+                    if w in loc_part or w.lower() in loc_part.lower():
+                        if noun_part.lower() == "access":
+                            generic_phrase = "the applicable access conditions"
+                        elif noun_part.lower() in ("facility", "facilities"):
+                            generic_phrase = "the applicable facility permissions"
+                        elif noun_part.lower() in ("permission", "permissions"):
+                            generic_phrase = "the applicable permissions"
+                        else:
+                            generic_phrase = f"the applicable {noun_part.lower()}"
+                            
+                        whole_phrase_pattern = re.compile(re.escape(m2.group(0)))
+                        verb_body_replaced = whole_phrase_pattern.sub(generic_phrase, verb_body)
+                        ns = f"{prefix}Confirm which location, if any, is relevant and verify {verb_body_replaced}"
+                        
+                        loc_words = re.findall(r"\b[A-Za-z0-9\-]+\b", loc_part)
+                        for lw in loc_words:
+                            unauth_set.discard(lw)
+                        break
+
+    unauthorized_words.clear()
+    unauthorized_words.extend(sorted(list(unauth_set)))
+    return ns
 
 
 def lowercase_sentence_starts(text: str) -> str:
@@ -790,6 +931,13 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
                 else:
                     _trace_log(f"        Result for '{w}': AUTHORIZED")
                     
+            if sentence_role == "action" and unauthorized:
+                _trace_log(f"    [Stage: Action Neutralization] Attempting to neutralize unauthorized tokens in action sentence: {unauthorized}")
+                neutralized_sentence = neutralize_unauthorized_in_action(sentence, unauthorized)
+                if neutralized_sentence != sentence:
+                    _trace_log(f"    [Stage: Action Neutralization] Neutralized action sentence.\n      Before: '{sentence.strip()}'\n      After: '{neutralized_sentence.strip()}'\n      Remaining unauthorized tokens: {unauthorized}")
+                    sentence = neutralized_sentence
+
             unauthorized.sort(key=len, reverse=True)
             validated_sentence = sentence
             if unauthorized:

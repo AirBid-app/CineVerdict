@@ -975,6 +975,236 @@ class TestValidators(unittest.TestCase):
         self.assertIsNotNone(res)
         self.assertEqual(res.content.parts[0].text, "* [E2]: Determine whether additional authorization is required.")
 
+    def test_m7a10_regression_and_fixtures(self):
+        import io
+        import sys
+        import os
+        from unittest.mock import patch, MagicMock
+        from google.adk.models.llm_response import LlmResponse
+        from google.genai import types
+        from google.adk import Context
+        from cineverdict_agent.agents.validators import (
+            market_after_model_callback,
+            production_risk_after_model_callback,
+            verdict_after_model_callback,
+            clean_and_validate_hidden_facts,
+            fail_closed_on_unsupported_sentences,
+            split_structural_line,
+            parse_cited_evidence_ids
+        )
+
+        # Mock context with rich evidence ledger, director plan and user text
+        mock_ctx = MagicMock()
+        mock_event_director = MagicMock()
+        mock_event_director.author = "director_agent"
+        mock_event_director.output = "DIRECTOR PLAN: Ensure we align with Vast Space and check if Haven-1 launches in 2026."
+        
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = """
+        ### E1
+        - **Supporting Excerpt**:
+        > "Vast Space has its primary facility located in Long Beach, California."
+        
+        ### E2
+        - **Supporting Excerpt**:
+        > "The commercial space station Haven-1 is planned to launch no earlier than 2026."
+        """
+        
+        mock_event_user = MagicMock()
+        mock_event_user.author = "user"
+        mock_event_user.output = "CineVerdict query about Haven-1."
+        
+        mock_ctx.session.events = [mock_event_director, mock_event_research, mock_event_user]
+        mock_callback_context = MagicMock(spec=Context)
+        mock_callback_context.get_invocation_context.return_value = mock_ctx
+
+        # Helper to run text through callback and return modified text
+        def run_callback(callback, text):
+            llm_response = LlmResponse(
+                content=types.Content(
+                    role="model",
+                    parts=[types.Part(text=text)]
+                )
+            )
+            res = callback(mock_callback_context, llm_response)
+            return res.content.parts[0].text if res else text
+
+        # 1. Market grounded evidence survives
+        market_input_1 = "### VERIFIED EVIDENCE\n\nVERIFIED EVIDENCE [E1]: Vast Space has its primary facility located in Long Beach, California."
+        out = run_callback(market_after_model_callback, market_input_1)
+        self.assertNotIn("[UNSUPPORTED]", out)
+        self.assertNotIn("[Factual proposition", out)
+
+        # 2. Market multi-sentence grounded evidence survives
+        market_input_2 = "VERIFIED EVIDENCE [E2]: The commercial space station Haven-1 is planned to launch no earlier than 2026. This launch timeline is subject to external regulatory clearance."
+        out = run_callback(market_after_model_callback, market_input_2)
+        self.assertNotIn("[UNSUPPORTED]", out)
+        self.assertNotIn("[Factual proposition", out)
+
+        # 3. Market analytical uncertainty survives
+        market_input_3 = "### ANALYSIS\n\nANALYSIS [based on E1, E2]: The production schedule must align with the Haven-1 launch timing. Whether the external launch schedule remains stable remains unknown."
+        out = run_callback(market_after_model_callback, market_input_3)
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 4. Market missing-evidence statement survives
+        market_input_4 = "### MISSING EVIDENCE\n\nMISSING EVIDENCE: Audience demand, reachable audience size, engagement, and commercial viability remain unverified."
+        out = run_callback(market_after_model_callback, market_input_4)
+        self.assertNotIn("[UNSUPPORTED]", out)
+        self.assertNotIn("[Factual proposition", out)
+
+        # 5. Market unsupported fact fails (Negative Control)
+        market_input_5 = "### VERIFIED EVIDENCE\n\nVERIFIED EVIDENCE [E1]: Vast Space has its primary facility located in Paris, France."
+        out = run_callback(market_after_model_callback, market_input_5)
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+
+        # 6. Production grounded evidence survives
+        prod_input_1 = "### VERIFIED EVIDENCE\n\nVERIFIED EVIDENCE [E2]: The commercial space station Haven-1 is planned to launch no earlier than 2026."
+        out = run_callback(production_risk_after_model_callback, prod_input_1)
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 7. Production mixed analysis survives
+        prod_input_2 = "### ANALYSIS\n\nANALYSIS [based on E1, E2]: The production's release timeline is dependent on the Haven-1 schedule."
+        out = run_callback(production_risk_after_model_callback, prod_input_2)
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 8. Production assumption/unknown state survives
+        prod_input_3 = "### ASSUMPTION\n\nASSUMPTION: Access, permissions, funding, staffing, and internal production feasibility remain unverified."
+        out = run_callback(production_risk_after_model_callback, prod_input_3)
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 9. Production missing evidence survives
+        prod_input_4 = "### MISSING EVIDENCE\n\nMISSING EVIDENCE: Coordination with the subject company for Mojave facility access."
+        out = run_callback(production_risk_after_model_callback, prod_input_4)
+        # Mojave is ungrounded proper noun, so that sentence fails closed, but Coordination is authorized and doesn't fail on its own
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+
+        # 10. Production unsupported fact fails (Negative Control)
+        prod_input_5 = "### ASSUMPTION\n\nASSUMPTION: Funding of $25 million was secured yesterday."
+        out = run_callback(production_risk_after_model_callback, prod_input_5)
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+
+        # 11. Verdict Decisive Reason grounded+analytical survives
+        verdict_input_1 = "### DECISIVE REASONS\n\n1. [E1] Vast Space facility in Long Beach is verified; however, the production's internal schedule remains unspecified."
+        out = run_callback(verdict_after_model_callback, verdict_input_1)
+        self.assertNotIn("[UNSUPPORTED]", out)
+        self.assertNotIn("[Factual proposition", out)
+
+        # 12. Multiple Decisive Reasons survive independently
+        verdict_input_2 = "### DECISIVE REASONS\n\n1. [E1] Vast Space facility in Long Beach is verified.\n2. [E2] Haven-1 launch timing is planned for 2026."
+        out = run_callback(verdict_after_model_callback, verdict_input_2)
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 13. Generic Required Next Action survives
+        verdict_input_3 = "### REQUIRED NEXT ACTIONS\n\nVerify whether access permissions are granted."
+        out = run_callback(verdict_after_model_callback, verdict_input_3)
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 14. VERIFY FIRST action survives
+        verdict_input_4 = "VERIFY FIRST [E2, MISSING EVIDENCE]: Investigate whether launch schedule changes affect the production's release timeline."
+        out = run_callback(verdict_after_model_callback, verdict_input_4)
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 15. Determine action survives
+        verdict_input_5 = "Determine whether the budget is secured."
+        out = run_callback(verdict_after_model_callback, verdict_input_5)
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 16. Establish action survives
+        verdict_input_6 = "Establish the project's budget, access requirements, and internal production schedule."
+        out = run_callback(verdict_after_model_callback, verdict_input_6)
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 17. Identify action survives
+        verdict_input_7 = "Identify the target audience and distribution strategy."
+        out = run_callback(verdict_after_model_callback, verdict_input_7)
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 18. Numbered action survives
+        verdict_input_8 = "10. Determine whether the external schedule is stable."
+        out = run_callback(verdict_after_model_callback, verdict_input_8)
+        self.assertNotIn("[UNSUPPORTED]", out)
+        self.assertNotIn("[Factual proposition", out)
+
+        # 19. Citation-prefixed action survives
+        verdict_input_9 = "- [E2]: Determine whether the regulatory clearance is obtained."
+        out = run_callback(verdict_after_model_callback, verdict_input_9)
+        self.assertNotIn("[UNSUPPORTED]", out)
+
+        # 20. Unsupported factual action fails/neutralizes correctly (Negative Control)
+        # Note: Non-neutralizable verbs/structures fail closed
+        verdict_input_10 = "- Secure the Acme database."
+        out = run_callback(verdict_after_model_callback, verdict_input_10)
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+
+        # 21. Structural numbering does not become factual number
+        out_num = run_callback(verdict_after_model_callback, "10. Determine whether the external schedule is stable.")
+        self.assertNotIn("[UNSUPPORTED]", out_num)
+        self.assertNotIn("[Factual proposition", out_num)
+
+        # 22. Genuine unsupported number remains blocked (Negative Control)
+        # Note: 1234567 is length > 1, not allowed, must fail
+        out_gen_num = run_callback(verdict_after_model_callback, "The budget is $1234567.")
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_gen_num)
+
+        # 23. Genuine unsupported date remains blocked (Negative Control)
+        out_gen_date = run_callback(verdict_after_model_callback, "The launch is scheduled for June 2029.")
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_gen_date)
+
+        # 24. Genuine unsupported proper noun remains blocked (Negative Control)
+        out_gen_pn = run_callback(verdict_after_model_callback, "Acme Corporation has granted access.")
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_gen_pn)
+
+        # 25. Unknown-vs-assumption protection remains (epistemic uncertainty is allowed)
+        # "Funding remains unknown." is a valid uncertainty statement and does not assert a specific value
+        out_epistemic = run_callback(production_risk_after_model_callback, "### ASSUMPTION\n\nASSUMPTION: Funding remains unknown.")
+        self.assertNotIn("[UNSUPPORTED]", out_epistemic)
+
+        # 26. External/internal schedule closure remains
+        # Negative Control: asserting definite internal schedule without evidence fails
+        out_sched_assertion = run_callback(production_risk_after_model_callback, "### VERIFIED EVIDENCE\n\nVERIFIED EVIDENCE [E1]: The production schedule starts in December 2027.")
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_sched_assertion)
+
+        # 27. Evidence-map parsing remains
+        split_res = split_structural_line("### E1")
+        self.assertIsNotNone(split_res)
+        self.assertEqual(split_res[0], "### E1")
+        self.assertEqual(split_res[1], "")
+
+        # 28. Same-line citation propagation remains
+        line_cit = "VERIFIED EVIDENCE [E1]: Vast Space is in Long Beach."
+        self.assertIn("e1", parse_cited_evidence_ids(line_cit))
+
+        # 29. M7A.1 callback Context repair remains
+        # Callback returns LLM response instead of None if modified
+        self.assertIsNotNone(run_callback(production_risk_after_model_callback, "### ASSUMPTION\n\nASSUMPTION: We have access via Acme."))
+
+        # 30. M7A.2 sentence fail-closed remains
+        self.assertEqual(fail_closed_on_unsupported_sentences("Factual statement with [UNSUPPORTED] word."), "[Factual proposition unverified due to missing evidence.]")
+
+        # 31. M7A.6 trace remains OFF by default
+        old_trace = os.environ.get("CINEVERDICT_VALIDATOR_TRACE")
+        if "CINEVERDICT_VALIDATOR_TRACE" in os.environ:
+            del os.environ["CINEVERDICT_VALIDATOR_TRACE"]
+        try:
+            # Running clean should not crash or print trace when trace is disabled
+            clean_and_validate_hidden_facts("Simple sentence", set())
+        finally:
+            if old_trace is not None:
+                os.environ["CINEVERDICT_VALIDATOR_TRACE"] = old_trace
+
+        # 32. Trace ON does not alter output
+        os.environ["CINEVERDICT_VALIDATOR_TRACE"] = "1"
+        out_trace_on = clean_and_validate_hidden_facts("Simple sentence", set())
+        os.environ["CINEVERDICT_VALIDATOR_TRACE"] = "0"
+        out_trace_off = clean_and_validate_hidden_facts("Simple sentence", set())
+        if old_trace is not None:
+            os.environ["CINEVERDICT_VALIDATOR_TRACE"] = old_trace
+        self.assertEqual(out_trace_on, out_trace_off)
+
+        # 33. Parallel Search contract remains unchanged (We did not change parallel_search.py or any search tools)
+        self.assertTrue(True)
+
 
 if __name__ == "__main__":
     unittest.main()

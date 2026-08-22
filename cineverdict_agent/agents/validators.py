@@ -418,6 +418,15 @@ def split_structural_line(line: str) -> tuple[str, str] | None:
     if m2:
         return m2.group(1), m2.group(2)
         
+    # M7A.10 Fallback: Match general list markers/bullets, e.g., "1. ", "10. ", "- ", "* "
+    list_marker_pattern = re.compile(
+        r"^([ \t]*(?:-\s+|\*\s+|\+\s+|\d+\s*\.\s+))(.*)$",
+        re.IGNORECASE
+    )
+    m3 = list_marker_pattern.match(line)
+    if m3:
+        return m3.group(1), m3.group(2)
+        
     return None
 
 
@@ -831,6 +840,8 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
     lines = text.split("\n")
     processed_lines = []
     
+    current_section = None
+    
     for line in lines:
         if not line.strip():
             processed_lines.append(line)
@@ -841,6 +852,13 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
         if split_res:
             label_part, body_part = split_res
             _trace_log(f"[Stage 2] Structural splitting: Line has known label. Label: '{label_part}', Body: '{body_part}'")
+            
+            # M7A.10: Update current_section if a known label is found in label_part
+            for label in KNOWN_LABELS:
+                if label.lower() in label_part.lower():
+                    current_section = label
+                    _trace_log(f"  [M7A.10 Section Tracking] Active section updated to: '{current_section}'")
+                    break
         else:
             label_part = ""
             body_part = line
@@ -919,8 +937,20 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
 
         processed_sentences = []
         for sentence in sentences:
-            sentence_role = classify_sentence_role(sentence)
-            _trace_log(f"  [Stage 5] Semantic proposition classification: Sentence: '{sentence.strip()}' -> Role: '{sentence_role}'")
+            content_role = classify_sentence_role(sentence)
+            sentence_role = content_role
+            
+            # M7A.10 Section-based role override for semantic accuracy
+            if current_section:
+                sec_upper = current_section.upper()
+                if sec_upper in ("MISSING EVIDENCE", "UNRESOLVED UNCERTAINTIES"):
+                    sentence_role = "uncertainty"
+                elif sec_upper in ("REQUIRED NEXT ACTIONS", "VERIFY FIRST", "SUPPORTED ACTION", "STRATEGIC ACTION"):
+                    sentence_role = "action"
+                elif sec_upper in ("ASSUMPTION", "HYPOTHESIS"):
+                    sentence_role = "analytical_assumption"
+
+            _trace_log(f"  [Stage 5] Semantic proposition classification: Sentence: '{sentence.strip()}' -> Role: '{sentence_role}' (Content Role: '{content_role}', Section: '{current_section}')")
             
             if sentence_role != "factual":
                 sentence_for_extraction = lowercase_sentence_starts(sentence)

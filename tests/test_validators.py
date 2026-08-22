@@ -93,7 +93,7 @@ class TestValidators(unittest.TestCase):
         mock_ctx = MagicMock()
         mock_event_director = MagicMock()
         mock_event_director.author = "director_agent"
-        mock_event_director.output = "DIRECTOR PLAN - USER Premise: Vast Space film"
+        mock_event_director.output = "DIRECTOR PLAN - USER Premise: Vast Space film. Align the production schedule, release timeline, and milestone."
 
         mock_event_research = MagicMock()
         mock_event_research.author = "research_agent"
@@ -120,10 +120,9 @@ class TestValidators(unittest.TestCase):
         res = market_after_model_callback(mock_callback_ctx, llm_response_market)
         self.assertIsNotNone(res)
         modified_text = res.content.parts[0].text
-        # Houston should be redacted, successful neutralized, viable audience neutralized
-        self.assertIn("[UNSUPPORTED]", modified_text)
+        # Houston is redacted, and since it contains [UNSUPPORTED], the entire sentence fails closed
+        self.assertIn("Factual proposition unverified due to missing evidence.", modified_text)
         self.assertNotIn("Houston", modified_text)
-        self.assertIn("HYPOTHESIS: an audience may exist", modified_text)
         self.assertIn("existing/distributed", modified_text)
 
         # Test production callback
@@ -140,9 +139,9 @@ class TestValidators(unittest.TestCase):
         res_prod = production_risk_after_model_callback(mock_callback_ctx, llm_response_prod)
         self.assertIsNotNone(res_prod)
         modified_text_prod = res_prod.content.parts[0].text
-        self.assertIn("[UNSUPPORTED]", modified_text_prod)
+        # Mojave is redacted, so the sentence fails closed
+        self.assertIn("Factual proposition unverified due to missing evidence.", modified_text_prod)
         self.assertNotIn("Mojave", modified_text_prod)
-        self.assertIn("whether coordination with the subject company is possible", modified_text_prod)
 
         # Test verdict callback
         llm_response_verdict = LlmResponse(
@@ -162,6 +161,96 @@ class TestValidators(unittest.TestCase):
         # Long Beach should NOT be redacted because it is allowed (present in research excerpt)
         self.assertIn("Long Beach", modified_text_verdict)
         self.assertNotIn("[UNSUPPORTED]", modified_text_verdict)
+
+    def test_invariant_a_no_substantive_global_allowlist(self):
+        # A substantive word must NOT survive solely because CineVerdict uses that word structurally elsewhere.
+        allowed = {"project"}  # "funding", "viability", "rights" are NOT allowed
+        input_text = "The Funding viability of Rights remains unverified."
+        output = clean_and_validate_hidden_facts(input_text, allowed)
+        self.assertIn("[UNSUPPORTED]", output)
+        self.assertNotIn("Funding", output)
+        self.assertNotIn("Rights", output)
+
+    def test_invariant_b_structural_labels_preserved(self):
+        # Explicitly recognized structural labels must survive intact.
+        allowed = {"project"}
+        input_text = "MISSING EVIDENCE: Funding source is unknown.\nANALYSIS: The project is feasible."
+        output = clean_and_validate_hidden_facts(input_text, allowed)
+        # "MISSING EVIDENCE:" and "ANALYSIS:" must survive intact
+        self.assertIn("MISSING EVIDENCE:", output)
+        self.assertIn("ANALYSIS:", output)
+        # In the body, "Funding" must be redacted because it's not in 'allowed'
+        self.assertIn("[UNSUPPORTED] source is unknown", output)
+
+        # Arbitrary/content-bearing labels must NOT be bypassed
+        arbitrary_input = "Commercial Viability: Some detail."
+        arbitrary_output = clean_and_validate_hidden_facts(arbitrary_input, allowed)
+        self.assertIn("[UNSUPPORTED] [UNSUPPORTED]: Some detail.", arbitrary_output)
+
+    def test_invariant_c_strict_morphology_and_stem_safeguards(self):
+        # sibilant plurals, safe possessives, and safe inflections survive ONLY when their literal source form exists in the allowed set.
+        
+        # 1. "Launches" (plural) survives if "launch" is in allowed
+        out_launch = clean_and_validate_hidden_facts("We monitored multiple Launches.", {"launch"})
+        self.assertNotIn("[UNSUPPORTED]", out_launch)
+        self.assertIn("Launches", out_launch)
+        
+        # 2. "Launches" is redacted if "launch" is absent
+        out_no_launch = clean_and_validate_hidden_facts("We monitored multiple Launches.", {"project"})
+        self.assertIn("[UNSUPPORTED]", out_no_launch)
+        
+        # 3. Non-plural 's' endings like Status/Analysis fail closed and do not validate Status/Analysis against truncated roots
+        out_status = clean_and_validate_hidden_facts("The Status of the project.", {"statu"})
+        self.assertIn("[UNSUPPORTED]", out_status) # Status should be redacted since statu is NOT its base form in variations
+
+        out_analysis = clean_and_validate_hidden_facts("A detailed Analysis is required.", {"analysi"})
+        self.assertIn("[UNSUPPORTED]", out_analysis)
+
+        # 4. Unrelated words with superficially similar roots (experimental -> expert) must not validate each other
+        out_coincidental = clean_and_validate_hidden_facts("We conducted Experimental tests.", {"expert"})
+        self.assertIn("[UNSUPPORTED]", out_coincidental)
+        self.assertNotIn("Experimental", out_coincidental)
+
+    def test_invariant_fail_closed_sentence_level(self):
+        # Unsupported propositions must fail closed at a sentence level rather than producing partially redacted gibberish.
+        from cineverdict_agent.agents.validators import fail_closed_on_unsupported_sentences
+        
+        # Unaltered if no unsupported
+        self.assertEqual(fail_closed_on_unsupported_sentences("This is a safe sentence."), "This is a safe sentence.")
+
+        # Completely replaces sentence with neutral marker
+        input_text = "We have two locations. One is in Long Beach. The other is at [UNSUPPORTED] [UNSUPPORTED]."
+        expected = "We have two locations. One is in Long Beach. [Factual proposition unverified due to missing evidence.]"
+        self.assertEqual(fail_closed_on_unsupported_sentences(input_text), expected)
+
+        # Preserves bullet points and list formatting
+        list_input = "- We checked the [UNSUPPORTED] location."
+        list_expected = "- [Factual proposition unverified due to missing evidence.]"
+        self.assertEqual(fail_closed_on_unsupported_sentences(list_input), list_expected)
+
+    def test_evidence_strength_protection(self):
+        # Historical/contextual evidence must not be upgraded to positive viability for the proposed project.
+        from cineverdict_agent.agents.validators import neutralize_evidence_strength_upgrades
+        
+        input_text = "Demand multiples of other space documentaries demonstrate market viability for the proposed film."
+        expected = "is historical/contextual evidence, but project-specific viability remains unverified"
+        self.assertIn(expected, neutralize_evidence_strength_upgrades(input_text))
+
+        input_text_2 = "These demand multiples demonstrate that science/space documentaries can achieve notable demand multiples."
+        expected_2 = "demonstrate historical metrics for those specific examples, which is historical/contextual evidence only"
+        self.assertIn(expected_2, neutralize_evidence_strength_upgrades(input_text_2))
+
+    def test_schedule_dependency_protection(self):
+        # External launch dates do not automatically create an internal project dependency.
+        from cineverdict_agent.agents.validators import make_schedule_conditional
+        
+        input_text = "The external launch date impacts the production schedule."
+        expected = "The external launch date is an external event; determine whether/how it affects the production schedule."
+        self.assertEqual(make_schedule_conditional(input_text), expected)
+
+        input_text_2 = "Build the filming schedule around the launch uncertainty."
+        expected_2 = "determine whether/how the launch uncertainty affects the filming schedule before final planning."
+        self.assertEqual(make_schedule_conditional(input_text_2), expected_2)
 
 
 if __name__ == "__main__":

@@ -474,10 +474,10 @@ def get_word_variations(word: str) -> set[str]:
 
 
 def extract_supporting_excerpts(research_text: str) -> list[str]:
-    """Robustly extracts all text values following 'Supporting Excerpt:' in the research text."""
+    """Robustly extracts all text values following 'Supporting Excerpt:' or 'Supporting Excerpts:' in the research text."""
     excerpts = []
-    # Split by Supporting Excerpt: (case insensitive)
-    parts = re.split(r"Supporting Excerpt:", research_text, flags=re.IGNORECASE)
+    # Split by Supporting Excerpt(s) followed by optional bold markers and colon
+    parts = re.split(r"Supporting Excerpts?\b(?:\s*\*\*)?\s*:", research_text, flags=re.IGNORECASE)
     # The first part is before the first Supporting Excerpt, so skip it
     for part in parts[1:]:
         val = part.strip()
@@ -485,21 +485,39 @@ def extract_supporting_excerpts(research_text: str) -> list[str]:
         excerpt_lines = []
         for line in lines:
             line_stripped = line.strip()
+            line_lower = line_stripped.lower()
             # Stop if the line starts with an evidence block marker or a standard label
             if (
                 re.match(r"^E\d+\s*(?:[\u2014\u2013\-:])", line_stripped, re.IGNORECASE) or
-                line_stripped.startswith("Claim:") or
-                line_stripped.startswith("Verification Status:") or
-                line_stripped.startswith("Source Title:") or
-                line_stripped.startswith("Source URL:") or
-                line_stripped.startswith("Publish Date:") or
-                line_stripped.startswith("Supporting Excerpt:")
+                re.match(r"^#*\s*E\d+\b", line_stripped, re.IGNORECASE) or
+                line_lower.startswith("claim:") or
+                line_lower.startswith("- **claim**:") or
+                line_lower.startswith("verification status:") or
+                line_lower.startswith("- **verification status**:") or
+                line_lower.startswith("source title:") or
+                line_lower.startswith("- **source title**:") or
+                line_lower.startswith("source url:") or
+                line_lower.startswith("- **source url**:") or
+                line_lower.startswith("publish date:") or
+                line_lower.startswith("- **publish date**:") or
+                "supporting excerpt" in line_lower
             ):
                 break
             excerpt_lines.append(line)
         
-        excerpt_text = "\n".join(excerpt_lines).strip()
-        # Strip surrounding double quotes if present
+        # Clean up blockquote markers and strip lines and quotes
+        cleaned_lines = []
+        for line in excerpt_lines:
+            line_stripped = line.strip()
+            if line_stripped.startswith(">"):
+                line_stripped = line_stripped[1:].strip()
+            # Strip quotes on a line level only if they fully wrap the line
+            if line_stripped.startswith('"') and line_stripped.endswith('"'):
+                line_stripped = line_stripped[1:-1].strip()
+            cleaned_lines.append(line_stripped)
+            
+        excerpt_text = "\n".join(cleaned_lines).strip()
+        # Strip surrounding double quotes if present on the entire block
         if excerpt_text.startswith('"') and excerpt_text.endswith('"'):
             excerpt_text = excerpt_text[1:-1].strip()
         elif excerpt_text.startswith('"'):
@@ -602,12 +620,34 @@ def get_evidence_excerpts_map(research_text: str) -> dict[str, list[str]]:
     if not research_text:
         return ev_map
         
-    parts = re.split(r'\b(E\d+)\s*(?:[\u2014\u2013\-:])', research_text, flags=re.IGNORECASE)
-    # parts[0] is pre-evidence text
-    # then parts[1] is 'E1', parts[2] is E1's text, etc.
-    for i in range(1, len(parts), 2):
-        key = parts[i].lower().strip()
-        body = parts[i+1]
+    # Regex to find evidence headers: E# at start of lines (possibly with Markdown decoration)
+    header_pattern = re.compile(
+        r'(?:^|\n)[ \t]*(?:'
+        r'(#+)[ \t]*(E\d+)\b|'  # Case 1: Markdown heading, e.g., ### E1
+        r'(?:-|\*|\d+\.)?[ \t]*(E\d+)[ \t]*([\u2014\u2013\-:])|'  # Case 2: Separators, e.g., E1:, E1 -
+        r'(?:-|\*|\d+\.)?[ \t]*(E\d+)[ \t]*(?:\n|$)'  # Case 3: Standalone line, e.g., E1 or - E1
+        r')',
+        re.IGNORECASE
+    )
+    
+    matches = list(header_pattern.finditer(research_text))
+    if not matches:
+        # Fallback to the original split behavior just in case
+        parts = re.split(r'\b(E\d+)\s*(?:[\u2014\u2013\-:])', research_text, flags=re.IGNORECASE)
+        for i in range(1, len(parts), 2):
+            key = parts[i].lower().strip()
+            body = parts[i+1]
+            excerpts = extract_supporting_excerpts(body)
+            if key not in ev_map:
+                ev_map[key] = []
+            ev_map[key].extend(excerpts)
+        return ev_map
+
+    for idx, match in enumerate(matches):
+        key = (match.group(2) or match.group(3) or match.group(5)).lower().strip()
+        start_idx = match.end()
+        end_idx = matches[idx + 1].start() if idx + 1 < len(matches) else len(research_text)
+        body = research_text[start_idx:end_idx]
         excerpts = extract_supporting_excerpts(body)
         if key not in ev_map:
             ev_map[key] = []

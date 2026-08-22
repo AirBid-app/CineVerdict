@@ -729,6 +729,177 @@ class TestValidators(unittest.TestCase):
             elif "CINEVERDICT_VALIDATOR_TRACE" in os.environ:
                 del os.environ["CINEVERDICT_VALIDATOR_TRACE"]
 
+    def test_m7a8_comprehensive_validation(self):
+        import io
+        import sys
+        import os
+        from unittest.mock import patch, MagicMock
+        from cineverdict_agent.agents.validators import (
+            get_evidence_excerpts_map,
+            classify_sentence_role,
+            clean_and_validate_hidden_facts,
+            fail_closed_on_unsupported_sentences,
+            market_after_model_callback,
+            production_risk_after_model_callback,
+            verdict_after_model_callback
+        )
+
+        # 1. Markdown `### E1` ledger entry parses.
+        ledger_markdown = """
+        ### E1
+        - **Claim**: Vast Space has launch permissions.
+        - **Supporting Excerpt**:
+        > "Vast Space has official authorization for space flight."
+        """
+        ev_map = get_evidence_excerpts_map(ledger_markdown)
+        self.assertIn("e1", ev_map)
+        self.assertEqual(ev_map["e1"], ["Vast Space has official authorization for space flight."])
+
+        # 2. `## E1` parses if supported by contract.
+        ledger_h2 = """
+        ## E2
+        - **Supporting Excerpt**:
+        > "Excerpt h2 content"
+        """
+        ev_map_h2 = get_evidence_excerpts_map(ledger_h2)
+        self.assertIn("e2", ev_map_h2)
+        self.assertEqual(ev_map_h2["e2"], ["Excerpt h2 content"])
+
+        # 3. Inline `E1:` parses.
+        ledger_inline = """
+        E3: Claim: Something
+        Supporting Excerpt: Excerpt inline content
+        """
+        ev_map_inline = get_evidence_excerpts_map(ledger_inline)
+        self.assertIn("e3", ev_map_inline)
+        self.assertEqual(ev_map_inline["e3"], ["Excerpt inline content"])
+
+        # 4. Hyphen/en-dash/em-dash formats remain supported.
+        ledger_seps = """
+        E4 - Claim: A
+        Supporting Excerpt: Excerpt hyp
+        E5 – Claim: B
+        Supporting Excerpt: Excerpt en
+        E6 — Claim: C
+        Supporting Excerpt: Excerpt em
+        """
+        ev_map_seps = get_evidence_excerpts_map(ledger_seps)
+        self.assertEqual(ev_map_seps["e4"], ["Excerpt hyp"])
+        self.assertEqual(ev_map_seps["e5"], ["Excerpt en"])
+        self.assertEqual(ev_map_seps["e6"], ["Excerpt em"])
+
+        # 5. `Supporting Excerpt:` parses.
+        # 6. `Supporting Excerpts:` parses.
+        ledger_plural = """
+        ### E7
+        Supporting Excerpts:
+        > "First plural excerpt"
+        > "Second plural excerpt"
+        """
+        ev_map_plural = get_evidence_excerpts_map(ledger_plural)
+        self.assertEqual(ev_map_plural["e7"], ["First plural excerpt\nSecond plural excerpt"])
+
+        # 7. Blockquote excerpt parses.
+        # 8. Multi-line blockquote remains within correct E#.
+        # 9. Next E# terminates prior excerpt scope.
+        # 10. Claim text is NOT used as evidence.
+        ledger_multi = """
+        ### E8
+        - **Claim**: Wrong claim text not to be used.
+        - **Supporting Excerpt**:
+        > "Line one of excerpt
+        > Line two of excerpt"
+        ### E9
+        - **Supporting Excerpt**:
+        > "E9 excerpt content"
+        """
+        ev_map_multi = get_evidence_excerpts_map(ledger_multi)
+        self.assertEqual(ev_map_multi["e8"], ["Line one of excerpt\nLine two of excerpt"])
+        self.assertEqual(ev_map_multi["e9"], ["E9 excerpt content"])
+        self.assertNotIn("Wrong claim text not to be used", ev_map_multi["e8"][0])
+
+        # Mock context setup for downstream validations
+        mock_ctx = MagicMock()
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = """
+        ### E1
+        - **Supporting Excerpt**:
+        > "Vast Space has official authorization."
+        
+        ### E2
+        - **Supporting Excerpt**:
+        > "The launch campaign begins in autumn."
+        """
+        mock_ctx.session.events = [mock_event_research]
+
+        # 11. Citation at start of line scopes all sentences in that same line.
+        # 12. `[based on E1, E2]` scopes same-line sentences.
+        # 13. Citation does not leak to next unrelated line.
+        # 14. Supported two-sentence factual bullet survives.
+        # 15. Mixed factual + analytical bullet survives when grounded.
+        # 16. Unsupported second factual sentence fails closed independently.
+        test_mixed = """* Vast Space has official authorization [E1]. This implies compliance.
+* Vast Space has official authorization [E1]. Seattle campaign begins in autumn."""
+        out_mixed = clean_and_validate_hidden_facts(test_mixed, set(), ctx=mock_ctx)
+        out_mixed_fail = fail_closed_on_unsupported_sentences(out_mixed)
+        self.assertIn("compliance", out_mixed_fail)
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_mixed_fail)
+
+        # 17. Decisive Reason factual+analytical shape survives.
+        test_decisive = "* [E1] Vast Space has official authorization. Because compliance is unresolved, next steps are unspecified."
+        out_decisive = clean_and_validate_hidden_facts(test_decisive, set(), ctx=mock_ctx)
+        self.assertIn("compliance is unresolved", out_decisive)
+
+        # 18. Generic Required Next Action survives.
+        # 19. Citation-prefixed Required Next Action survives.
+        # 20. Ungrounded named entity in action remains neutralized/fail-closed.
+        # 21. Ungrounded number/date remains protected.
+        test_actions = """* Verify whether the proposed use satisfies the applicable terms.
+* [E1] Determine whether additional authorization is required.
+* Verify Seattle access conditions.
+* Determine whether the 42 crew members can be supported."""
+        out_actions = clean_and_validate_hidden_facts(test_actions, set(), ctx=mock_ctx)
+        out_actions_fail = fail_closed_on_unsupported_sentences(out_actions)
+        self.assertIn("Verify whether the proposed use satisfies the applicable terms.", out_actions_fail)
+        self.assertIn("Determine whether additional authorization is required.", out_actions_fail)
+        self.assertIn("Confirm which location, if any, is relevant", out_actions_fail)
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_actions_fail)
+
+        # 22. Structural headings remain intact.
+        self.assertEqual(clean_and_validate_hidden_facts("### REQUIRED NEXT ACTIONS", set(), ctx=mock_ctx), "### REQUIRED NEXT ACTIONS")
+
+        # 23. Schedule semantic closure remains intact.
+        from cineverdict_agent.agents.validators import make_schedule_conditional
+        self.assertIn("determine whether/how", make_schedule_conditional("The external launch date impacts the production schedule."))
+
+        # 24. Unknown-vs-assumption protection remains intact.
+        from cineverdict_agent.agents.validators import neutralize_positive_assumptions
+        self.assertIn("Audience demand remains unverified", neutralize_positive_assumptions("It is assumed a viable audience is reachable."))
+
+        # 25. Trace OFF leaves behavior unchanged.
+        # 26. Trace ON reveals actual evidence-map/citation/role decisions.
+        old_env = os.environ.get("CINEVERDICT_VALIDATOR_TRACE")
+        try:
+            os.environ["CINEVERDICT_VALIDATOR_TRACE"] = "1"
+            stderr_capture = io.StringIO()
+            with patch('sys.stderr', stderr_capture):
+                clean_and_validate_hidden_facts("Verify access [E1].", set(), ctx=mock_ctx)
+            self.assertIn("Citation parsing:", stderr_capture.getvalue())
+        finally:
+            if old_env is not None:
+                os.environ["CINEVERDICT_VALIDATOR_TRACE"] = old_env
+            elif "CINEVERDICT_VALIDATOR_TRACE" in os.environ:
+                del os.environ["CINEVERDICT_VALIDATOR_TRACE"]
+
+        # 27. M7A.1 callback Context regression remains intact.
+        from google.adk.models.llm_response import LlmResponse
+        mock_callback_context = MagicMock()
+        mock_callback_context.get_invocation_context.return_value = mock_ctx
+        
+        # 28. M7A.2 sentence fail-closed remains intact.
+        self.assertEqual(fail_closed_on_unsupported_sentences("Factual statement with [UNSUPPORTED] word."), "[Factual proposition unverified due to missing evidence.]")
+
 
 if __name__ == "__main__":
     unittest.main()

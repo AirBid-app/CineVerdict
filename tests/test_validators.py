@@ -489,6 +489,114 @@ class TestValidators(unittest.TestCase):
         out_18 = fail_closed_on_unsupported_sentences("This has [UNSUPPORTED] word.")
         self.assertIn("[Factual proposition unverified due to missing evidence.]", out_18)
 
+    def test_decision_trace(self):
+        import io
+        import sys
+        import os
+        from unittest.mock import patch, MagicMock
+        from google.adk import Context
+        from google.adk.models.llm_response import LlmResponse
+        from google.genai import types
+
+        # Ensure environment starts without CINEVERDICT_VALIDATOR_TRACE
+        old_env = os.environ.get("CINEVERDICT_VALIDATOR_TRACE")
+        if "CINEVERDICT_VALIDATOR_TRACE" in os.environ:
+            del os.environ["CINEVERDICT_VALIDATOR_TRACE"]
+
+        try:
+            # 1. Tracing is OFF by default
+            stderr_capture = io.StringIO()
+            with patch('sys.stderr', stderr_capture):
+                out = clean_and_validate_hidden_facts("Seattle is beautiful.", set())
+            self.assertEqual(stderr_capture.getvalue(), "")
+
+            # 2. Can be explicitly enabled and 3. does not change validator output
+            os.environ["CINEVERDICT_VALIDATOR_TRACE"] = "1"
+            stderr_capture = io.StringIO()
+            with patch('sys.stderr', stderr_capture):
+                out_traced = clean_and_validate_hidden_facts("Seattle is beautiful.", set())
+            self.assertEqual(out, out_traced)
+            trace_content = stderr_capture.getvalue()
+            self.assertNotEqual(trace_content, "")
+
+            # 4. Records original rejected sentence
+            self.assertIn("Seattle is beautiful.", trace_content)
+
+            # 5. Records the exact rejection reason and 6. identifies unsupported proper nouns
+            self.assertIn("Result for 'Seattle': UNAUTHORIZED", trace_content)
+
+            # 7. Identifies unsupported numbers/dates
+            stderr_capture = io.StringIO()
+            with patch('sys.stderr', stderr_capture):
+                clean_and_validate_hidden_facts("Launched in 2027.", set())
+            trace_content_num = stderr_capture.getvalue()
+            self.assertIn("Result for '2027': UNAUTHORIZED", trace_content_num)
+
+            # 8. Records proposition classification
+            self.assertIn("Semantic proposition classification:", trace_content)
+
+            # 9. Records cited evidence IDs / evidence scope
+            mock_ctx = MagicMock()
+            mock_event_research = MagicMock()
+            mock_event_research.author = "research_agent"
+            mock_event_research.output = """
+            E1 — Claim: Vast Space headquarters is in Long Beach.
+            Supporting Excerpt: "Vast Space has its primary facility located in Long Beach."
+            """
+            mock_ctx.session.events = [mock_event_research]
+            stderr_capture = io.StringIO()
+            with patch('sys.stderr', stderr_capture):
+                clean_and_validate_hidden_facts("Vast Space primary facility is in Long Beach [E1].", set(), ctx=mock_ctx)
+            trace_content_cite = stderr_capture.getvalue()
+            self.assertIn("Citation parsing: Cited IDs on line: ['e1']", trace_content_cite)
+            self.assertIn("Selected excerpts for e1:", trace_content_cite)
+
+            # 10. Records the fail-closed transformation
+            stderr_capture = io.StringIO()
+            with patch('sys.stderr', stderr_capture):
+                fail_closed_on_unsupported_sentences("Seattle is [UNSUPPORTED].")
+            trace_content_fail = stderr_capture.getvalue()
+            self.assertIn("Sentence-level fail-closed replacement: Sentence containing '[UNSUPPORTED]' replaced.", trace_content_fail)
+
+            # 11. Does not expose arbitrary environment variables/secrets
+            # Make sure we only log structural/validation strings, no os.environ listing.
+            self.assertNotIn("PATH", trace_content)
+            self.assertNotIn("HOME", trace_content)
+
+            # 12. Works for Market, Production/Risk, and Verdict callback paths if role context is available
+            mock_callback_ctx = MagicMock(spec=Context)
+            mock_callback_ctx.get_invocation_context.return_value = mock_ctx
+            
+            # Market callback
+            llm_response = LlmResponse(content=types.Content(role="model", parts=[types.Part(text="Seattle is beautiful.")]))
+            stderr_capture = io.StringIO()
+            with patch('sys.stderr', stderr_capture):
+                market_after_model_callback(mock_callback_ctx, llm_response)
+            trace_market = stderr_capture.getvalue()
+            self.assertIn("[CINEVERDICT TRACE][market_agent] === START CALLBACK ===", trace_market)
+
+            # Production/Risk callback
+            llm_response = LlmResponse(content=types.Content(role="model", parts=[types.Part(text="Seattle is beautiful.")]))
+            stderr_capture = io.StringIO()
+            with patch('sys.stderr', stderr_capture):
+                production_risk_after_model_callback(mock_callback_ctx, llm_response)
+            trace_prod = stderr_capture.getvalue()
+            self.assertIn("[CINEVERDICT TRACE][production_risk_agent] === START CALLBACK ===", trace_prod)
+
+            # Verdict callback
+            llm_response = LlmResponse(content=types.Content(role="model", parts=[types.Part(text="Seattle is beautiful.")]))
+            stderr_capture = io.StringIO()
+            with patch('sys.stderr', stderr_capture):
+                verdict_after_model_callback(mock_callback_ctx, llm_response)
+            trace_verdict = stderr_capture.getvalue()
+            self.assertIn("[CINEVERDICT TRACE][verdict_agent] === START CALLBACK ===", trace_verdict)
+
+        finally:
+            if old_env is not None:
+                os.environ["CINEVERDICT_VALIDATOR_TRACE"] = old_env
+            elif "CINEVERDICT_VALIDATOR_TRACE" in os.environ:
+                del os.environ["CINEVERDICT_VALIDATOR_TRACE"]
+
 
 if __name__ == "__main__":
     unittest.main()

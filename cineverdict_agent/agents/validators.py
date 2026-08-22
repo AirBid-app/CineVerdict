@@ -1,6 +1,20 @@
 import re
+import os
+import sys
+import threading
 from google.adk.models.llm_response import LlmResponse
 from google.genai import types
+
+_trace_state = threading.local()
+
+def _is_trace_enabled() -> bool:
+    return os.environ.get("CINEVERDICT_VALIDATOR_TRACE") == "1"
+
+def _trace_log(msg: str):
+    if _is_trace_enabled():
+        role = getattr(_trace_state, "role", "unknown")
+        sys.stderr.write(f"[CINEVERDICT TRACE][{role}] {msg}\n")
+        sys.stderr.flush()
 
 COMMON_STOP_WORDS = {
     "the", "a", "an", "and", "or", "but", "if", "because", "as", "what", "where", "when", "why", "how",
@@ -629,6 +643,7 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
     """
     research_text = get_research_text(ctx) if ctx else ""
     ev_map = get_evidence_excerpts_map(research_text) if research_text else {}
+    _trace_log(f"[Stage 4] Evidence-scope construction. Research text length: {len(research_text)}. Evidence map keys: {list(ev_map.keys())}")
 
     lines = text.split("\n")
     processed_lines = []
@@ -642,16 +657,21 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
         split_res = split_structural_line(line)
         if split_res:
             label_part, body_part = split_res
+            _trace_log(f"[Stage 2] Structural splitting: Line has known label. Label: '{label_part}', Body: '{body_part}'")
         else:
             label_part = ""
             body_part = line
+            _trace_log(f"[Stage 2] Structural splitting: No known label found. Body: '{body_part}'")
 
         # Construct the allowed words set for this line
         cited_ids = parse_cited_evidence_ids(line)
+        _trace_log(f"[Stage 3] Citation parsing: Cited IDs on line: {cited_ids}")
+        
         if cited_ids and ev_map:
             line_allowed = set()
             for cid in cited_ids:
                 excerpts = ev_map.get(cid, [])
+                _trace_log(f"  [Stage 4] Selected excerpts for {cid}: {excerpts}")
                 for exc in excerpts:
                     words = re.findall(r"[a-zA-Z0-9\-]+", exc)
                     for w in words:
@@ -688,8 +708,9 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
                 line_allowed.add(w.lower())
             for w in COMMON_STOP_WORDS:
                 line_allowed.add(w.lower())
+            _trace_log(f"  [Stage 4] Custom line-level allowed words constructed. Size: {len(line_allowed)}")
         else:
-            # Fallback to global allowed words
+            _trace_log(f"  [Stage 4] Falling back to global allowed words.")
             line_allowed = allowed_words
 
         # Pre-expand allowed words to include all of their conservative variations
@@ -716,13 +737,19 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
         processed_sentences = []
         for sentence in sentences:
             sentence_role = classify_sentence_role(sentence)
+            _trace_log(f"  [Stage 5] Semantic proposition classification: Sentence: '{sentence.strip()}' -> Role: '{sentence_role}'")
             
             if sentence_role != "factual":
                 sentence_for_extraction = lowercase_sentence_starts(sentence)
+                _trace_log(f"    [Stage 6] Analytical/uncertainty/action handling: Lowercasing sentence start: '{sentence_for_extraction.strip()}'")
             else:
                 sentence_for_extraction = sentence
+                _trace_log(f"    [Stage 6] Factual handling: Keeping original sentence capitalization: '{sentence_for_extraction.strip()}'")
 
-            significant_words = set(re.findall(r"\b[A-Z][a-zA-Z0-9\-]*\b|\b\d+\b", sentence_for_extraction))
+            raw_tokens = re.findall(r"\b[A-Z][a-zA-Z0-9\-]*\b|\b\d+\b", sentence_for_extraction)
+            significant_words = set(raw_tokens)
+            _trace_log(f"    [Stage 7/8] Extracted tokens: {list(significant_words)}")
+            
             unauthorized = []
             for w in significant_words:
                 w_lower = w.lower()
@@ -735,27 +762,43 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
                     or w_lower in SYSTEM_ALLOWED_WORDS
                     or any(var in SYSTEM_ALLOWED_WORDS for var in w_vars)
                 )
+                _trace_log(f"      [Stage 9] Word check for '{w}': Variations checked: {list(w_vars)}")
+                _trace_log(f"        Match in expanded_allowed: {any(var in expanded_allowed for var in w_vars)}")
+                _trace_log(f"        Match in system/common: {w_lower in COMMON_STOP_WORDS or w_lower in SYSTEM_ALLOWED_WORDS or any(var in SYSTEM_ALLOWED_WORDS for var in w_vars)}")
                 
                 if not is_authorized and sentence_role != "factual":
-                    is_authorized = (
+                    is_authorized_analytical = (
                         w_lower in ANALYTICAL_SUBSTANTIVE_WORDS
                         or any(var in ANALYTICAL_SUBSTANTIVE_WORDS for var in w_vars)
                     )
-                    if not is_authorized and "-" in w_lower:
-                        parts_list = [p for p in w_lower.split("-") if p]
-                        if parts_list and all(
-                            sub in ANALYTICAL_SUBSTANTIVE_WORDS or any(var in ANALYTICAL_SUBSTANTIVE_WORDS for var in get_word_variations(sub))
-                            for sub in parts_list
-                        ):
-                            is_authorized = True
+                    _trace_log(f"        Match in ANALYTICAL_SUBSTANTIVE_WORDS: {is_authorized_analytical}")
+                    if is_authorized_analytical:
+                        is_authorized = True
+                    else:
+                        if "-" in w_lower:
+                            parts_list = [p for p in w_lower.split("-") if p]
+                            if parts_list and all(
+                                sub in ANALYTICAL_SUBSTANTIVE_WORDS or any(var in ANALYTICAL_SUBSTANTIVE_WORDS for var in get_word_variations(sub))
+                                for sub in parts_list
+                            ):
+                                is_authorized = True
+                                _trace_log(f"        Sub-parts check in ANALYTICAL_SUBSTANTIVE_WORDS for '{w_lower}': Authorized")
                 
                 if not is_authorized and len(w) > 1:
                     unauthorized.append(w)
+                    _trace_log(f"        Result for '{w}': UNAUTHORIZED (Rule: token/entity/value judged unsupported)")
+                else:
+                    _trace_log(f"        Result for '{w}': AUTHORIZED")
                     
             unauthorized.sort(key=len, reverse=True)
             validated_sentence = sentence
+            if unauthorized:
+                _trace_log(f"    [Stage 10] Unsupported tokens to redact in sentence: {unauthorized}")
             for w in unauthorized:
                 validated_sentence = re.sub(r"\b" + re.escape(w) + r"\b", "[UNSUPPORTED]", validated_sentence, flags=re.IGNORECASE)
+            
+            if validated_sentence != sentence:
+                _trace_log(f"    [Stage 10] Unsupported marker insertion: Sentence after redaction: '{validated_sentence.strip()}'")
             processed_sentences.append(validated_sentence)
             
         processed_lines.append(label_part + "".join(processed_sentences))
@@ -1005,6 +1048,7 @@ def fail_closed_on_unsupported_sentences(text: str) -> str:
                     trailing_ws = m.group(1)
                 
                 neutral_marker = f"{bullet_prefix}[Factual proposition unverified due to missing evidence.]{trailing_ws}"
+                _trace_log(f"[Stage 11] Sentence-level fail-closed replacement: Sentence containing '[UNSUPPORTED]' replaced. Before: '{sentence.strip()}' -> After: '{neutral_marker.strip()}'")
                 processed_sentences.append(neutral_marker)
             else:
                 processed_sentences.append(sentence)
@@ -1015,76 +1059,183 @@ def fail_closed_on_unsupported_sentences(text: str) -> str:
 
 
 def market_after_model_callback(callback_context, llm_response: LlmResponse) -> LlmResponse | None:
-    ctx = callback_context.get_invocation_context()
-    if not llm_response.content or not llm_response.content.parts:
-        return None
+    _trace_state.role = "market_agent"
+    _trace_log("=== START CALLBACK ===")
+    try:
+        ctx = callback_context.get_invocation_context()
+        if not llm_response.content or not llm_response.content.parts:
+            _trace_log("No content/parts in LLM response.")
+            return None
 
-    allowed_words = get_allowed_words(ctx)
-    modified = False
+        allowed_words = get_allowed_words(ctx)
+        _trace_log(f"Global allowed words size: {len(allowed_words)}")
+        modified = False
 
-    for part in llm_response.content.parts:
-        if part.text:
-            orig = part.text
-            text = clean_and_validate_hidden_facts(orig, allowed_words, ctx=ctx)
-            text = neutralize_audience_assumptions(text)
-            text = neutralize_positive_assumptions(text)
-            text = neutralize_evaluative_words(text, allowed_words)
-            text = neutralize_evidence_strength_upgrades(text)
-            text = make_schedule_conditional(text)
-            text = fail_closed_on_unsupported_sentences(text)
-            if text != orig:
-                part.text = text
-                modified = True
+        for part in llm_response.content.parts:
+            if part.text:
+                orig = part.text
+                _trace_log(f"[Stage 1] Raw downstream model output:\n{orig}\n")
+                
+                text = clean_and_validate_hidden_facts(orig, allowed_words, ctx=ctx)
+                _trace_log(f"After clean_and_validate_hidden_facts:\n{text}\n")
+                
+                before_aud = text
+                text = neutralize_audience_assumptions(text)
+                if text != before_aud:
+                    _trace_log(f"[Stage: Audience Neutralization] Modified text.\nBefore:\n{before_aud}\nAfter:\n{text}\n")
+                
+                before_pos = text
+                text = neutralize_positive_assumptions(text)
+                if text != before_pos:
+                    _trace_log(f"[Stage: Positive Assumptions Neutralization] Modified text.\nBefore:\n{before_pos}\nAfter:\n{text}\n")
+                
+                before_eval = text
+                text = neutralize_evaluative_words(text, allowed_words)
+                if text != before_eval:
+                    _trace_log(f"[Stage: Evaluative Words Neutralization] Modified text.\nBefore:\n{before_eval}\nAfter:\n{text}\n")
+                
+                before_ev_str = text
+                text = neutralize_evidence_strength_upgrades(text)
+                if text != before_ev_str:
+                    _trace_log(f"[Stage: Evidence Strength Upgrades Neutralization] Modified text.\nBefore:\n{before_ev_str}\nAfter:\n{text}\n")
+                
+                before_sched = text
+                text = make_schedule_conditional(text)
+                if text != before_sched:
+                    _trace_log(f"[Stage 12] Schedule semantic guard:\nBefore:\n{before_sched}\nAfter:\n{text}\n")
+                
+                before_fail = text
+                text = fail_closed_on_unsupported_sentences(text)
+                if text != before_fail:
+                    _trace_log(f"[Stage 11] Sentence-level fail-closed replacement:\nBefore:\n{before_fail}\nAfter:\n{text}\n")
+                
+                _trace_log(f"[Stage 13] Final callback output:\n{text}\n")
+                if text != orig:
+                    part.text = text
+                    modified = True
 
-    return llm_response if modified else None
+        return llm_response if modified else None
+    finally:
+        _trace_log("=== END CALLBACK ===")
+        _trace_state.role = "unknown"
 
 
 def production_risk_after_model_callback(
     callback_context, llm_response: LlmResponse
 ) -> LlmResponse | None:
-    ctx = callback_context.get_invocation_context()
-    if not llm_response.content or not llm_response.content.parts:
-        return None
+    _trace_state.role = "production_risk_agent"
+    _trace_log("=== START CALLBACK ===")
+    try:
+        ctx = callback_context.get_invocation_context()
+        if not llm_response.content or not llm_response.content.parts:
+            _trace_log("No content/parts in LLM response.")
+            return None
 
-    allowed_words = get_allowed_words(ctx)
-    modified = False
+        allowed_words = get_allowed_words(ctx)
+        _trace_log(f"Global allowed words size: {len(allowed_words)}")
+        modified = False
 
-    for part in llm_response.content.parts:
-        if part.text:
-            orig = part.text
-            text = clean_and_validate_hidden_facts(orig, allowed_words, ctx=ctx)
-            text = neutralize_production_assumptions(text)
-            text = neutralize_positive_assumptions(text)
-            text = neutralize_evaluative_words(text, allowed_words)
-            text = neutralize_evidence_strength_upgrades(text)
-            text = make_schedule_conditional(text)
-            text = fail_closed_on_unsupported_sentences(text)
-            if text != orig:
-                part.text = text
-                modified = True
+        for part in llm_response.content.parts:
+            if part.text:
+                orig = part.text
+                _trace_log(f"[Stage 1] Raw downstream model output:\n{orig}\n")
+                
+                text = clean_and_validate_hidden_facts(orig, allowed_words, ctx=ctx)
+                _trace_log(f"After clean_and_validate_hidden_facts:\n{text}\n")
+                
+                before_prod = text
+                text = neutralize_production_assumptions(text)
+                if text != before_prod:
+                    _trace_log(f"[Stage: Production Neutralization] Modified text.\nBefore:\n{before_prod}\nAfter:\n{text}\n")
+                
+                before_pos = text
+                text = neutralize_positive_assumptions(text)
+                if text != before_pos:
+                    _trace_log(f"[Stage: Positive Assumptions Neutralization] Modified text.\nBefore:\n{before_pos}\nAfter:\n{text}\n")
+                
+                before_eval = text
+                text = neutralize_evaluative_words(text, allowed_words)
+                if text != before_eval:
+                    _trace_log(f"[Stage: Evaluative Words Neutralization] Modified text.\nBefore:\n{before_eval}\nAfter:\n{text}\n")
+                
+                before_ev_str = text
+                text = neutralize_evidence_strength_upgrades(text)
+                if text != before_ev_str:
+                    _trace_log(f"[Stage: Evidence Strength Upgrades Neutralization] Modified text.\nBefore:\n{before_ev_str}\nAfter:\n{text}\n")
+                
+                before_sched = text
+                text = make_schedule_conditional(text)
+                if text != before_sched:
+                    _trace_log(f"[Stage 12] Schedule semantic guard:\nBefore:\n{before_sched}\nAfter:\n{text}\n")
+                
+                before_fail = text
+                text = fail_closed_on_unsupported_sentences(text)
+                if text != before_fail:
+                    _trace_log(f"[Stage 11] Sentence-level fail-closed replacement:\nBefore:\n{before_fail}\nAfter:\n{text}\n")
+                
+                _trace_log(f"[Stage 13] Final callback output:\n{text}\n")
+                if text != orig:
+                    part.text = text
+                    modified = True
 
-    return llm_response if modified else None
+        return llm_response if modified else None
+    finally:
+        _trace_log("=== END CALLBACK ===")
+        _trace_state.role = "unknown"
 
 
 def verdict_after_model_callback(callback_context, llm_response: LlmResponse) -> LlmResponse | None:
-    ctx = callback_context.get_invocation_context()
-    if not llm_response.content or not llm_response.content.parts:
-        return None
+    _trace_state.role = "verdict_agent"
+    _trace_log("=== START CALLBACK ===")
+    try:
+        ctx = callback_context.get_invocation_context()
+        if not llm_response.content or not llm_response.content.parts:
+            _trace_log("No content/parts in LLM response.")
+            return None
 
-    allowed_words = get_allowed_words(ctx)
-    modified = False
+        allowed_words = get_allowed_words(ctx)
+        _trace_log(f"Global allowed words size: {len(allowed_words)}")
+        modified = False
 
-    for part in llm_response.content.parts:
-        if part.text:
-            orig = part.text
-            text = clean_and_validate_hidden_facts(orig, allowed_words, ctx=ctx)
-            text = neutralize_positive_assumptions(text)
-            text = neutralize_evaluative_words(text, allowed_words)
-            text = neutralize_evidence_strength_upgrades(text)
-            text = make_schedule_conditional(text)
-            text = fail_closed_on_unsupported_sentences(text)
-            if text != orig:
-                part.text = text
-                modified = True
+        for part in llm_response.content.parts:
+            if part.text:
+                orig = part.text
+                _trace_log(f"[Stage 1] Raw downstream model output:\n{orig}\n")
+                
+                text = clean_and_validate_hidden_facts(orig, allowed_words, ctx=ctx)
+                _trace_log(f"After clean_and_validate_hidden_facts:\n{text}\n")
+                
+                before_pos = text
+                text = neutralize_positive_assumptions(text)
+                if text != before_pos:
+                    _trace_log(f"[Stage: Positive Assumptions Neutralization] Modified text.\nBefore:\n{before_pos}\nAfter:\n{text}\n")
+                
+                before_eval = text
+                text = neutralize_evaluative_words(text, allowed_words)
+                if text != before_eval:
+                    _trace_log(f"[Stage: Evaluative Words Neutralization] Modified text.\nBefore:\n{before_eval}\nAfter:\n{text}\n")
+                
+                before_ev_str = text
+                text = neutralize_evidence_strength_upgrades(text)
+                if text != before_ev_str:
+                    _trace_log(f"[Stage: Evidence Strength Upgrades Neutralization] Modified text.\nBefore:\n{before_ev_str}\nAfter:\n{text}\n")
+                
+                before_sched = text
+                text = make_schedule_conditional(text)
+                if text != before_sched:
+                    _trace_log(f"[Stage 12] Schedule semantic guard:\nBefore:\n{before_sched}\nAfter:\n{text}\n")
+                
+                before_fail = text
+                text = fail_closed_on_unsupported_sentences(text)
+                if text != before_fail:
+                    _trace_log(f"[Stage 11] Sentence-level fail-closed replacement:\nBefore:\n{before_fail}\nAfter:\n{text}\n")
+                
+                _trace_log(f"[Stage 13] Final callback output:\n{text}\n")
+                if text != orig:
+                    part.text = text
+                    modified = True
 
-    return llm_response if modified else None
+        return llm_response if modified else None
+    finally:
+        _trace_log("=== END CALLBACK ===")
+        _trace_state.role = "unknown"

@@ -369,9 +369,16 @@ def neutralize_positive_assumptions(text: str) -> str:
             )
 
             if has_assumption_intro:
+                if "[unsupported]" in s_clean:
+                    # Let factual grounding violations fail-closed rather than neutralizing them
+                    processed_sentences.append(sentence)
+                    continue
+
                 # Audience
                 if any(x in s_clean for x in ["audience", "demand", "interest", "popularity", "market"]):
-                    if not any(x in s_clean for x in ["unverified", "unknown", "unspecified", "not established", "not been", "remains to be"]):
+                    if any(p in s_clean for p in ["viable", "exists", "exist", "reachable", "segment", "there is", "is a", "sufficient", "commercial", "high", "interested", "reach", "can reach", "willing"]):
+                        sentence = "Audience demand remains unverified and audience viability remains unknown."
+                    elif not any(x in s_clean for x in ["unverified", "unknown", "unspecified", "not established", "not been", "remains to be"]):
                         sentence = re.sub(
                             r'(?:(?:it\s+is\s+)?(?:assumed|hypothesized|assumes)(?:\s+that)?|(?:the\s+)?(?:assumption|hypothesis)(?:\s+is)?(?:\s+that)?)\s+(?:an?\s+)?(?:viable|commercially\s+viable|reachable|defined)?\s*(?:audience|demand|public\s+interest|market)(?:\s+(?:exists|is\s+reachable|is\s+viable|exists\s+and\s+is\s+reachable|is\s+defined|is\s+reachable\s+or\s+unverified|is\s+commercially\s+sustainable|is\s+commercially\s+viable))?[.\s]*',
                             "Audience demand remains unverified and whether a reachable audience exists remains unknown.",
@@ -572,32 +579,38 @@ def extract_supporting_excerpts(research_text: str) -> list[str]:
 def get_research_text(ctx) -> str:
     if not ctx or not ctx.session or not ctx.session.events:
         return ""
-    for event in ctx.session.events:
+    for event in reversed(ctx.session.events):
         if event.author == "research_agent":
+            text = ""
             if isinstance(event.output, dict):
-                return event.output.get("research_evidence", "")
-            if isinstance(event.output, str):
-                return event.output
-            if event.content and event.content.parts:
-                return "".join(
+                text = event.output.get("research_evidence", "")
+            elif isinstance(event.output, str):
+                text = event.output
+            elif event.content and event.content.parts:
+                text = "".join(
                     part.text for part in event.content.parts if part.text
                 )
+            if text.strip():
+                return text
     return ""
 
 
 def get_director_text(ctx) -> str:
     if not ctx or not ctx.session or not ctx.session.events:
         return ""
-    for event in ctx.session.events:
+    for event in reversed(ctx.session.events):
         if event.author == "director_agent":
+            text = ""
             if isinstance(event.output, dict):
-                return event.output.get("director_plan", "")
-            if isinstance(event.output, str):
-                return event.output
-            if event.content and event.content.parts:
-                return "".join(
+                text = event.output.get("director_plan", "")
+            elif isinstance(event.output, str):
+                text = event.output
+            elif event.content and event.content.parts:
+                text = "".join(
                     part.text for part in event.content.parts if part.text
                 )
+            if text.strip():
+                return text
     return ""
 
 
@@ -1011,6 +1024,7 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
     processed_lines = []
 
     current_section = None
+    active_evidence_scope = None
 
     for line in lines:
         if not line.strip():
@@ -1019,6 +1033,7 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
 
         # Detect and split known structural label
         split_res = split_structural_line(line)
+        matched_label = None
         if split_res:
             label_part, body_part = split_res
             _trace_log(f"[Stage 2] Structural splitting: Line has known label. Label: '{label_part}', Body: '{body_part}'")
@@ -1027,6 +1042,7 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
             for label in KNOWN_LABELS:
                 if label.lower() in label_part.lower():
                     current_section = label
+                    matched_label = label
                     _trace_log(f"  [M7A.10 Section Tracking] Active section updated to: '{current_section}'")
                     break
         else:
@@ -1034,50 +1050,74 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
             body_part = line
             _trace_log(f"[Stage 2] Structural splitting: No known label found. Body: '{body_part}'")
 
+        # Track active evidence scope hierarchically
+        if matched_label:
+            if matched_label.upper() in ("VERIFIED EVIDENCE", "SECONDARY EVIDENCE", "CONFLICTING EVIDENCE"):
+                parent_citations = parse_cited_evidence_ids(line)
+                active_evidence_scope = parent_citations
+                _trace_log(f"  [Evidence Scope Tracking] Active evidence scope updated to: {active_evidence_scope}")
+            else:
+                active_evidence_scope = None
+                _trace_log(f"  [Evidence Scope Tracking] Active evidence scope cleared (section: {matched_label})")
+
         # Construct the allowed words set for this line
-        cited_ids = parse_cited_evidence_ids(line)
-        _trace_log(f"[Stage 3] Citation parsing: Cited IDs on line: {cited_ids}")
+        explicit_citations = parse_cited_evidence_ids(line)
+        _trace_log(f"[Stage 3] Citation parsing: Cited IDs on line: {explicit_citations}")
 
-        if cited_ids and ev_map:
-            line_allowed = set()
-            for cid in cited_ids:
-                excerpts = ev_map.get(cid, [])
-                _trace_log(f"  [Stage 4] Selected excerpts for {cid}: {excerpts}")
-                for exc in excerpts:
-                    line_allowed.update(extract_and_normalize_words(exc))
-                claims = ev_claims_map.get(cid, [])
-                _trace_log(f"  [Stage 4] Selected claims for {cid}: {claims}")
-                for clm in claims:
-                    line_allowed.update(extract_and_normalize_words(clm))
+        if ev_map:
+            # We have dynamic evidence mapping
+            effective_cited_ids = None
+            if explicit_citations:
+                effective_cited_ids = explicit_citations
+                _trace_log(f"  [Stage 4] Using explicit line citations: {effective_cited_ids}")
+            elif active_evidence_scope is not None:
+                effective_cited_ids = active_evidence_scope
+                _trace_log(f"  [Stage 4] Inheriting parent evidence scope: {effective_cited_ids}")
 
-            # Add Director Plan words
-            director_text = get_director_text(ctx)
-            if director_text:
-                words = re.findall(r"[a-zA-Z0-9\-]+", director_text)
-                for w in words:
+            if effective_cited_ids is not None:
+                line_allowed = set()
+                for cid in effective_cited_ids:
+                    excerpts = ev_map.get(cid, [])
+                    _trace_log(f"  [Stage 4] Selected excerpts for {cid}: {excerpts}")
+                    for exc in excerpts:
+                        line_allowed.update(extract_and_normalize_words(exc))
+                    claims = ev_claims_map.get(cid, [])
+                    _trace_log(f"  [Stage 4] Selected claims for {cid}: {claims}")
+                    for clm in claims:
+                        line_allowed.update(extract_and_normalize_words(clm))
+
+                # Add Director Plan words
+                director_text = get_director_text(ctx)
+                if director_text:
+                    words = re.findall(r"[a-zA-Z0-9\-]+", director_text)
+                    for w in words:
+                        line_allowed.add(w.lower())
+                        if "-" in w:
+                            for sub in w.split("-"):
+                                if sub:
+                                    line_allowed.add(sub.lower())
+
+                # Add User content words
+                user_text = get_user_text(ctx)
+                if user_text:
+                    words = re.findall(r"[a-zA-Z0-9\-]+", user_text)
+                    for w in words:
+                        line_allowed.add(w.lower())
+                        if "-" in w:
+                            for sub in w.split("-"):
+                                if sub:
+                                    line_allowed.add(sub.lower())
+
+                # Add system vocabulary & common words
+                for w in SYSTEM_ALLOWED_WORDS:
                     line_allowed.add(w.lower())
-                    if "-" in w:
-                        for sub in w.split("-"):
-                            if sub:
-                                line_allowed.add(sub.lower())
-
-            # Add User content words
-            user_text = get_user_text(ctx)
-            if user_text:
-                words = re.findall(r"[a-zA-Z0-9\-]+", user_text)
-                for w in words:
+                for w in COMMON_STOP_WORDS:
                     line_allowed.add(w.lower())
-                    if "-" in w:
-                        for sub in w.split("-"):
-                            if sub:
-                                line_allowed.add(sub.lower())
-
-            # Add system vocabulary & common words
-            for w in SYSTEM_ALLOWED_WORDS:
-                line_allowed.add(w.lower())
-            for w in COMMON_STOP_WORDS:
-                line_allowed.add(w.lower())
-            _trace_log(f"  [Stage 4] Custom line-level allowed words constructed. Size: {len(line_allowed)}")
+                _trace_log(f"  [Stage 4] Custom line-level allowed words constructed. Size: {len(line_allowed)}")
+            else:
+                # No explicit citations and no active_evidence_scope. Fall back to global allowed words.
+                _trace_log(f"  [Stage 4] Falling back to global allowed words.")
+                line_allowed = allowed_words
         else:
             _trace_log(f"  [Stage 4] Falling back to global allowed words.")
             line_allowed = allowed_words
@@ -1142,6 +1182,7 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
                     or w_lower in COMMON_STOP_WORDS
                     or w_lower in SYSTEM_ALLOWED_WORDS
                     or any(var in SYSTEM_ALLOWED_WORDS for var in w_vars)
+                    or bool(re.match(r"^[eE]\d+$", w_lower))
                 )
                 _trace_log(f"      [Stage 9] Word check for '{w}': Variations checked: {list(w_vars)}")
                 _trace_log(f"        Match in expanded_allowed: {any(var in expanded_allowed for var in w_vars)}")

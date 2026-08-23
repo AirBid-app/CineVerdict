@@ -1508,6 +1508,147 @@ class TestValidators(unittest.TestCase):
         output_evidenced_independence = make_schedule_conditional(input_evidenced_independence)
         self.assertEqual(output_evidenced_independence, input_evidenced_independence)
 
+    def test_m7a15_dynamic_ledger_contract_closure(self):
+        from unittest.mock import MagicMock
+        from cineverdict_agent.agents.validators import (
+            get_evidence_excerpts_map,
+            get_evidence_claims_map,
+            parse_cited_evidence_ids,
+            get_research_text,
+            get_director_text,
+            clean_and_validate_hidden_facts,
+            neutralize_positive_assumptions
+        )
+
+        # 1. Dynamic Ledger Parsing & Boundaries (E1-E12, E25)
+        research_ledger = """
+### E1 — Launch History
+Supporting Excerpt: "E1 launch history is successful in 2026."
+
+### E9 — Scheduling History
+Supporting Excerpt: "E9 schedule includes spaceflight demo."
+
+### E10 — Structural Testing
+Supporting Excerpt: "E10 structural tests are complete."
+
+### E11 — Environmental Testing
+Supporting Excerpt: "E11 environmental conditions passed."
+
+### E12 — Spaceflight Precedents
+Supporting Excerpt: "E12 precedent is set."
+        """
+
+        ex_map = get_evidence_excerpts_map(research_ledger)
+        self.assertIn("e1", ex_map)
+        self.assertIn("e9", ex_map)
+        self.assertIn("e10", ex_map)
+        self.assertIn("e11", ex_map)
+        self.assertIn("e12", ex_map)
+
+        # Invariants: no overlapping, boundaries are correct
+        self.assertEqual(ex_map["e1"], ["E1 launch history is successful in 2026."])
+        self.assertEqual(ex_map["e9"], ["E9 schedule includes spaceflight demo."])
+        self.assertEqual(ex_map["e10"], ["E10 structural tests are complete."])
+        self.assertEqual(ex_map["e11"], ["E11 environmental conditions passed."])
+        self.assertEqual(ex_map["e12"], ["E12 precedent is set."])
+
+        # Negative control: E10 does not parse as E1
+        self.assertNotIn("structural", " ".join(ex_map.get("e1", [])))
+        # Negative control: E12 does not parse as E1/E2
+        self.assertNotIn("precedent", " ".join(ex_map.get("e1", [])))
+        self.assertNotIn("precedent", " ".join(ex_map.get("e2", [])))
+
+        # Parse cited evidence IDs including multi-digit and dynamic markers
+        self.assertEqual(parse_cited_evidence_ids("[E1, E9, E10, E11, E12, E25]"), ["e1", "e9", "e10", "e11", "e12", "e25"])
+
+        # 2. Callback Session Event States (Latest vs Stale)
+        mock_ctx = MagicMock()
+        mock_event_stale = MagicMock()
+        mock_event_stale.author = "research_agent"
+        mock_event_stale.output = "Stale Evidence E1-E5"
+
+        mock_event_latest = MagicMock()
+        mock_event_latest.author = "research_agent"
+        mock_event_latest.output = research_ledger
+
+        # Chronological order: oldest first, newest last
+        mock_ctx.session.events = [mock_event_stale, mock_event_latest]
+
+        # Call get_research_text and ensure latest complete event wins
+        self.assertEqual(get_research_text(mock_ctx), research_ledger)
+
+        # Symmetrical test for get_director_text
+        mock_dir_stale = MagicMock()
+        mock_dir_stale.author = "director_agent"
+        mock_dir_stale.output = "Stale Director Plan"
+
+        mock_dir_latest = MagicMock()
+        mock_dir_latest.author = "director_agent"
+        mock_dir_latest.output = "Latest Director Plan"
+
+        mock_ctx.session.events = [mock_dir_stale, mock_event_stale, mock_dir_latest, mock_event_latest]
+        self.assertEqual(get_director_text(mock_ctx), "Latest Director Plan")
+
+        # 3. Hierarchical Active Evidence Scope & Grouped Evidence Inherit
+        mock_ctx_scope = MagicMock()
+        mock_res_ev = MagicMock()
+        mock_res_ev.author = "research_agent"
+        mock_res_ev.output = """
+### E3
+Supporting Excerpt: "Acme company is fully authorized."
+
+### E5
+Supporting Excerpt: "Media assets include video terms."
+
+### E6
+Supporting Excerpt: "Website terms allow Paramount."
+        """
+        mock_ctx_scope.session.events = [mock_res_ev]
+
+        # Test case: child lines under VERIFIED EVIDENCE [E5, E6]
+        # Child 1 and Child 2 use words only in E5/E6
+        # Child 3 uses 'Acme', which is only in E3 (should be redacted as UNSUPPORTED!)
+        input_grouped = """VERIFIED EVIDENCE [E5, E6]:
+- Media assets have valid video terms.
+- Website terms cover paramount footage.
+- Acme company is verified."""
+
+        output_grouped = clean_and_validate_hidden_facts(input_grouped, set(), ctx=mock_ctx_scope)
+        self.assertIn("Media assets have valid video terms.", output_grouped)
+        self.assertIn("Website terms cover paramount footage.", output_grouped)
+        self.assertIn("[UNSUPPORTED] company is verified.", output_grouped)
+
+        # Explicit override check: if child line explicitly cites [E3], it should pass using E3
+        input_override = """VERIFIED EVIDENCE [E5, E6]:
+- [E3] Acme company is verified.
+- Media assets have video terms."""
+        output_override = clean_and_validate_hidden_facts(input_override, set(), ctx=mock_ctx_scope)
+        self.assertIn("[E3] Acme company is verified.", output_override)
+        self.assertIn("Media assets have video terms.", output_override)
+
+        # Negative control 4: child without parent or explicit citation does not gain all evidence
+        input_no_parent = """SECONDARY EVIDENCE:
+- Media assets have video terms.
+- Acme company is verified."""
+        output_no_parent = clean_and_validate_hidden_facts(input_no_parent, set(), ctx=mock_ctx_scope)
+        self.assertIn("- [UNSUPPORTED] assets have video terms.", output_no_parent)
+        self.assertIn("- [UNSUPPORTED] company is verified.", output_no_parent)
+
+        # 4. Semantics & Audience Neutralization
+        # Test segment-based positive audience assumptions neutralization
+        test_seg = "It is assumed that there is a viable audience segment interested in short documentary content about private spaceflight and Haven-1, though unverified audience demand remains unverified."
+        neutralized_seg = neutralize_positive_assumptions(test_seg)
+        self.assertEqual(neutralized_seg, "Audience demand remains unverified and audience viability remains unknown.")
+
+        self.assertEqual(
+            neutralize_positive_assumptions("We assume a viable audience exists."),
+            "Audience demand remains unverified and audience viability remains unknown."
+        )
+        self.assertEqual(
+            neutralize_positive_assumptions("We assume demand is high."),
+            "Audience demand remains unverified and audience viability remains unknown."
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

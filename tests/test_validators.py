@@ -1649,6 +1649,133 @@ Supporting Excerpt: "Website terms allow Paramount."
             "Audience demand remains unverified and audience viability remains unknown."
         )
 
+    def test_m7a16_get_user_text_fallback(self):
+        from cineverdict_agent.agents.validators import get_user_text
+        mock_ctx = MagicMock()
+        mock_user_event = MagicMock()
+        mock_user_event.author = "user"
+        mock_user_event.output = "Evaluate documentary about Vast Space and Haven-1."
+        mock_ctx.session.events = [mock_user_event]
+
+        self.assertEqual(get_user_text(mock_ctx), "Evaluate documentary about Vast Space and Haven-1.")
+
+    def test_m7a16_evidence_local_variants(self):
+        from cineverdict_agent.agents.validators import clean_and_validate_hidden_facts, get_allowed_words
+        mock_ctx = MagicMock()
+        mock_event_user = MagicMock()
+        mock_event_user.author = "user"
+        mock_event_user.output = "Evaluate documentary about Vast Space and Haven-1."
+        mock_ctx.session.events = [mock_event_user]
+
+        # 'Space' (capitalized) is authorized because it is in the user prompt!
+        line_supported = "The Vast Space primary structure was tested."
+        allowed = get_allowed_words(mock_ctx)
+        output_supported = clean_and_validate_hidden_facts(line_supported, allowed, ctx=mock_ctx)
+        self.assertEqual(output_supported, line_supported)
+
+        # Negative control: 'Space' fails if we don't have user prompt or any evidence containing 'space'
+        mock_ctx_empty = MagicMock()
+        mock_ctx_empty.session.events = []
+        allowed_empty = get_allowed_words(mock_ctx_empty)
+        output_unsupported = clean_and_validate_hidden_facts(line_supported, allowed_empty, ctx=mock_ctx_empty)
+        self.assertIn("[UNSUPPORTED]", output_unsupported)
+
+    def test_m7a16_clause_level_preservation_end_to_end(self):
+        from cineverdict_agent.agents.validators import clean_and_validate_hidden_facts, fail_closed_on_unsupported_sentences
+        # Mock Context with research ledger E1 (no SpaceX, no UnsupportedCorp, no 2028)
+        research_ledger = """
+        ### EVIDENCE LEDGER
+        #### E1
+        * **Claim:** Vast is updating the schedule for Haven-1 launch.
+        * **Supporting Excerpt:** "schedule for Haven-1 launch"
+        """
+        mock_ctx = MagicMock()
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = research_ledger
+        mock_ctx.session.events = [mock_event_research]
+
+        # Case A: Factual prefix fails, but right clause has zero unsupported words and is valid uncertainty -> PRESERVED!
+        line_a = "- Vast will launch on January 5, 2035 [E1], but whether the internal schedule aligns remains unknown."
+        # January/5/2035 are ungrounded and redacted, but right side remains clean
+        cleaned_a = clean_and_validate_hidden_facts(line_a, set(), ctx=mock_ctx)
+        final_a = fail_closed_on_unsupported_sentences(cleaned_a)
+        self.assertEqual(final_a, "- Whether the internal schedule aligns remains unknown.")
+
+        # Case B: Factual prefix fails, and right clause contains ungrounded proper noun -> FAIL CLOSED!
+        line_b = "- Vast will launch on January 5, 2035 [E1], but whether UnsupportedCorp launches remains unknown."
+        # UnsupportedCorp is ungrounded proper noun -> gets redacted to [UNSUPPORTED] -> right side has [UNSUPPORTED] -> fails closed
+        cleaned_b = clean_and_validate_hidden_facts(line_b, set(), ctx=mock_ctx)
+        final_b = fail_closed_on_unsupported_sentences(cleaned_b)
+        self.assertEqual(final_b, "- [Factual proposition unverified due to missing evidence.]")
+
+        # Case C: Factual prefix fails, and right clause contains ungrounded number/date -> FAIL CLOSED!
+        line_c = "- Vast will launch on January 5, 2035 [E1], but whether launch occurs in 2028 remains unknown."
+        # 2028 is ungrounded -> redacted -> fails closed
+        cleaned_c = clean_and_validate_hidden_facts(line_c, set(), ctx=mock_ctx)
+        final_c = fail_closed_on_unsupported_sentences(cleaned_c)
+        self.assertEqual(final_c, "- [Factual proposition unverified due to missing evidence.]")
+
+        # Case D: Factual prefix fails, and right clause contains both ungrounded entity and date -> FAIL CLOSED!
+        line_d = "- Vast will launch on January 5, 2035 [E1], but whether UnsupportedCorp launches in 2028 remains unknown."
+        # both redacted -> fails closed
+        cleaned_d = clean_and_validate_hidden_facts(line_d, set(), ctx=mock_ctx)
+        final_d = fail_closed_on_unsupported_sentences(cleaned_d)
+        self.assertEqual(final_d, "- [Factual proposition unverified due to missing evidence.]")
+
+    def test_m7a16_stale_vs_latest_user_text(self):
+        from cineverdict_agent.agents.validators import get_user_text
+        mock_ctx = MagicMock()
+        mock_event_old = MagicMock()
+        mock_event_old.author = "user"
+        mock_event_old.output = "Old unrelated premise."
+
+        mock_event_new = MagicMock()
+        mock_event_new.author = "user"
+        mock_event_new.output = "Latest current premise."
+
+        mock_ctx.session.events = [mock_event_old, mock_event_new]
+        self.assertEqual(get_user_text(mock_ctx), "Latest current premise.")
+
+    def test_m7a16_schedule_neutralization_real_scope(self):
+        from cineverdict_agent.agents.validators import clean_and_validate_hidden_facts, make_schedule_conditional
+        # Mock Research Ledger with E1 supporting dependency and E2 supporting independence
+        research_ledger = """
+        ### EVIDENCE LEDGER
+        #### E1
+        * **Claim:** E1 states Mojave facility was completed.
+        * **Supporting Excerpt:** "Vast testing site in Mojave, California"
+
+        #### E2
+        * **Claim:** E2 states the production timeline operates independently of the external launch schedule.
+        * **Supporting Excerpt:** "production timeline operates independently of the external launch schedule"
+        """
+        mock_ctx = MagicMock()
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = research_ledger
+        mock_ctx.session.events = [mock_event_research]
+
+        # 1. SUPPORTED DEPENDENCY: cited statement contractually tied to external event survives
+        line_dep = "E1 states internal release is contractually tied to external event [E1]."
+        output_dep = make_schedule_conditional(line_dep)
+        self.assertEqual(output_dep, line_dep)
+
+        # 2. SUPPORTED INDEPENDENCE: cited independent statement survives
+        line_ind = "E2 states the production timeline operates independently of the external launch schedule [E2]."
+        output_ind = make_schedule_conditional(line_ind)
+        self.assertEqual(output_ind, line_ind)
+
+        # 3. UNKNOWN Case: uncited or unverified actions are neutralized
+        line_unk = "Schedule the production timeline conditionally or independently of the external launch schedule."
+        output_unk = make_schedule_conditional(line_unk)
+        self.assertIn("without presupposing any dependency or independence relationship", output_unk)
+
+        # 4. Wrong-Citation Isolation: proper noun Mojave cited under E2 (which doesn't support it) -> gets redacted
+        line_wrong = "The Mojave facility acceptance testing was completed [E2]."
+        cleaned_wrong = clean_and_validate_hidden_facts(line_wrong, set(), ctx=mock_ctx)
+        self.assertIn("[UNSUPPORTED]", cleaned_wrong)
+
 
 if __name__ == "__main__":
     unittest.main()

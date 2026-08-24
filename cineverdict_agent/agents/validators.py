@@ -467,13 +467,20 @@ def split_structural_line(line: str) -> tuple[str, str] | None:
     return None
 
 
-def get_word_variations(word: str) -> set[str]:
+def get_word_variations(word: str, expand_mappings: bool = False) -> set[str]:
     """Generates conservative, morphology-safe lowercase variations of a word.
 
     Ensures zero false matches for unrelated words (e.g., status/analysis/experimental).
     """
     w = word.lower().replace("’", "'")
     variations = {w}
+
+    # Deterministic evidence-local lexical variations (M7A.16 revised, Source -> Variants)
+    safe_local_mappings = {}
+
+    if expand_mappings and w in safe_local_mappings:
+        for val in safe_local_mappings[w]:
+            variations.add(val)
 
     # 1. Strip possessives (fully safe)
     if w.endswith("'s"):
@@ -618,7 +625,21 @@ def get_user_text(ctx) -> str:
     if not ctx:
         return ""
     if hasattr(ctx, "user_content") and ctx.user_content and ctx.user_content.parts:
-        return "".join(part.text for part in ctx.user_content.parts if part.text)
+        text = "".join(part.text for part in ctx.user_content.parts if part.text)
+        if text.strip():
+            return text
+    if hasattr(ctx, "session") and ctx.session and hasattr(ctx.session, "events"):
+        for event in reversed(ctx.session.events):
+            if getattr(event, "author", "") == "user":
+                text = ""
+                if isinstance(event.output, dict):
+                    text = event.output.get("user", "")
+                elif isinstance(event.output, str):
+                    text = event.output
+                elif getattr(event, "content", None) and event.content.parts:
+                    text = "".join(part.text for part in event.content.parts if part.text)
+                if text.strip():
+                    return text
     return ""
 
 
@@ -1125,7 +1146,7 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
         # Pre-expand allowed words to include all of their conservative variations
         expanded_allowed = set()
         for w in line_allowed:
-            for var in get_word_variations(w):
+            for var in get_word_variations(w, expand_mappings=True):
                 expanded_allowed.add(var)
 
         # Split body_part into sentences
@@ -1377,15 +1398,18 @@ def make_schedule_conditional(text: str) -> str:
         r"\balign\s+(?:the\s+)?delivery\s+schedule\b": "determine whether/how it affects the delivery schedule",
         r"\balign\s+(?:the\s+)?marketing\s+schedule\b": "determine whether/how it affects the marketing schedule",
         r"\balign\s+(?:the\s+)?festival\s+schedule\b": "determine whether/how it affects the festival schedule",
+        r"\balign\s+(?:the\s+)?internal\s+schedule\b": "determine whether/how it affects the internal schedule",
     }
-    for pattern, replacement in schedule_mappings.items():
-        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
 
     # 2. Advanced conditionalization mappings for schedule dependency creation
-    internal_sched = r"(?:production|filming|delivery|release|marketing|festival|distribution|project|delivery's|post-production|production\s+and\s+post-production|documentary|film|internal|proposed)\s+(?:schedule|timeline|planning|plan|schedules|timelines|window|windows|date|dates|activities|activity|focus)"
-    external_timing = r"(?:external|launch|conflicting|subject's|third-party|industry|subject|company's|campaign|timing)\s+(?:date|dates|schedule|timeline|timing|event|events|uncertainty|uncertainties|launch\s+date|launch\s+schedule|launch\s+uncertainty|campaign\s+schedule|campaign\s+timeline|campaign|adjustments?|delays?|changes?|slips?|movements?|history|history\s+of\s+timing\s+adjustments|historical\s+schedule\s+changes|timing\s+adjustments)"
+    internal_sched = r"(?:internal|documentary's|project's|film's|production|post-production|filming|delivery|release|marketing|festival|distribution|project|delivery's|documentary|film|proposed)(?:,\s*(?:internal|documentary's|project's|film's|production|post-production|filming|delivery|release|marketing|festival|distribution|project|documentary|film|proposed)|,\s*and\s+(?:internal|documentary's|project's|film's|production|post-production|filming|delivery|release|marketing|festival|distribution|project|documentary|film|proposed)|\s+and\s+(?:internal|documentary's|project's|film's|production|post-production|filming|delivery|release|marketing|festival|distribution|project|documentary|film|proposed)|\s+(?:internal|documentary's|project's|film's|production|post-production|filming|delivery|release|marketing|festival|distribution|project|documentary|film|proposed))*\s+(?:schedule|timeline|planning|plan|schedules|timelines|window|windows|date|dates|activities|activity|focus)"
+    external_timing = r"(?:external|launch|conflicting|subject's|third-party|industry|subject|company's|campaign|timing)\s+(?:[\w\-]+\s+)?(?:date|dates|schedule|timeline|timing|event|events|uncertainty|uncertainties|launch\s+date|launch\s+schedule|launch\s+uncertainty|campaign\s+schedule|campaign\s+timeline|campaign|adjustments?|delays?|changes?|slips?|movements?|history|history\s+of\s+timing\s+adjustments|historical\s+schedule\s+changes|timing\s+adjustments)"
 
     advanced_mappings = {
+        # Pattern: formulate/make/define internal schedule conditionally or independently of external timing
+        rf"\b(?:formulate|schedule|define|make|align|tie|base|adjust|structure|organize)\s+(?:the\s+)?(?:any\s+)?(?:proposed\s+)?(?:({internal_sched})\s+)?(?:conditionally\s+or\s+independently\s+of|independently\s+of|independent\s+of|independent\s+from|conditionally\s+on|dependent\s+on)\s+(?:the\s+)?({external_timing})\b":
+            r"define the \1 without presupposing any dependency or independence relationship to the \2, and separately determine whether such a relationship is intended or required",
+
         # Pattern: external timing introduces timing uncertainty for internal schedule
         rf"\b({external_timing})\s+(?:introduces|creates|causes|leads\s+to)\s+(?:timing\s+)?uncertainty\s+(?:for|in)\s+(?:the\s+)?(?:any\s+)?(?:proposed\s+)?({internal_sched})\b":
             r"\1 is an external event; determine whether/how it ___TEMP_AFFECTS___ the \2",
@@ -1420,21 +1444,7 @@ def make_schedule_conditional(text: str) -> str:
     }
 
     sorted_keys = sorted(advanced_mappings.keys(), key=len, reverse=True)
-    for pattern in sorted_keys:
-        replacement_template = advanced_mappings[pattern]
 
-        def sub_fn(match, template=replacement_template):
-            result = template
-            for g_num in range(1, len(match.groups()) + 1):
-                val = match.group(g_num) or ""
-                result = result.replace(f"\\{g_num}", val)
-            return result
-
-        text = re.sub(pattern, sub_fn, text, flags=re.IGNORECASE)
-
-    text = text.replace("___TEMP_AFFECTS___", "affects")
-
-    # Epistemic neutralization for M7A.14: absence of evidence != independence/dependence
     lines = text.split("\n")
     processed_lines = []
     for line in lines:
@@ -1467,7 +1477,35 @@ def make_schedule_conditional(text: str) -> str:
         for sentence in sentences:
             s_lower = sentence.lower()
 
-            # Check for schedule or general project-external variables independence claims
+            # Skip if sentence is already neutralized/conditionalized to prevent double neutralization
+            if "whether" in s_lower or "remains unverified" in s_lower or "remains unknown" in s_lower or "remains to be verified" in s_lower:
+                processed_sentences.append(sentence)
+                continue
+
+            # Apply classic schedule mappings
+            for pattern, replacement in schedule_mappings.items():
+                sentence = re.sub(pattern, replacement, sentence, flags=re.IGNORECASE)
+
+            # Apply advanced mappings
+            for pattern in sorted_keys:
+                replacement_template = advanced_mappings[pattern]
+
+                def sub_fn(match, template=replacement_template):
+                    result = template
+                    val1 = match.group(1) or ""
+                    if not val1.strip():
+                        result = result.replace("the \\1", "the internal schedule")
+                    for g_num in range(1, len(match.groups()) + 1):
+                        val = match.group(g_num) or ""
+                        result = result.replace(f"\\{g_num}", val)
+                    return result
+
+                sentence = re.sub(pattern, sub_fn, sentence, flags=re.IGNORECASE)
+
+            sentence = sentence.replace("___TEMP_AFFECTS___", "affects")
+            s_lower = sentence.lower()
+
+            # Epistemic neutralization logic (M7A.14): absence of evidence != independence/dependence
             has_independence = "independent" in s_lower or "independence" in s_lower
             has_unknown = any(x in s_lower for x in ["unknown", "unverified", "no evidence", "absence of evidence", "no public evidence", "not establish", "not link"])
 
@@ -1532,9 +1570,36 @@ def fail_closed_on_unsupported_sentences(text: str) -> str:
                 if m:
                     trailing_ws = m.group(1)
 
-                neutral_marker = f"{bullet_prefix}[Factual proposition unverified due to missing evidence.]{trailing_ws}"
-                _trace_log(f"[Stage 11] Sentence-level fail-closed replacement: Sentence containing '[UNSUPPORTED]' replaced. Before: '{sentence.strip()}' -> After: '{neutral_marker.strip()}'")
-                processed_sentences.append(neutral_marker)
+                # M7A.16 Clause-Level Preservation
+                # Split sentence by common conjunctions or punctuation separating factual preface and independent uncertainty
+                preserved = False
+                conjunctions = [", but ", ", however, ", "; however, ", ", and ", "; "]
+                for conj in conjunctions:
+                    if conj in sentence:
+                        parts_clause = sentence.split(conj, 1)
+                        if len(parts_clause) == 2:
+                            left, right = parts_clause
+                            # The left clause contains [UNSUPPORTED], but the right clause has ZERO unsupported words!
+                            if "[UNSUPPORTED]" in left and "[UNSUPPORTED]" not in right:
+                                right_stripped = right.strip()
+                                # Verify the right clause is a valid independent epistemic/analytical statement
+                                starts_with_epistemic = right_stripped.lower().startswith(("whether", "if"))
+                                has_epistemic_phrase = any(x in right_stripped.lower() for x in ["remains unknown", "unverified", "unresolved", "unspecified", "remains to be verified"])
+
+                                if (starts_with_epistemic or has_epistemic_phrase) and len(right_stripped.split()) >= 4:
+                                    valid_clause = right_stripped[0].upper() + right_stripped[1:]
+                                    if not valid_clause.endswith((".", "!", "?")):
+                                        valid_clause += "."
+                                    preserved_sentence = f"{bullet_prefix}{valid_clause}{trailing_ws}"
+                                    _trace_log(f"[Stage 11] Clause-level preservation: Replaced compound sentence with valid clause. Before: '{sentence.strip()}' -> After: '{preserved_sentence.strip()}'")
+                                    processed_sentences.append(preserved_sentence)
+                                    preserved = True
+                                    break
+
+                if not preserved:
+                    neutral_marker = f"{bullet_prefix}[Factual proposition unverified due to missing evidence.]{trailing_ws}"
+                    _trace_log(f"[Stage 11] Sentence-level fail-closed replacement: Sentence containing '[UNSUPPORTED]' replaced. Before: '{sentence.strip()}' -> After: '{neutral_marker.strip()}'")
+                    processed_sentences.append(neutral_marker)
             else:
                 processed_sentences.append(sentence)
 

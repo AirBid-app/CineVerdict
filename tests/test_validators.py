@@ -1776,6 +1776,116 @@ Supporting Excerpt: "Website terms allow Paramount."
         cleaned_wrong = clean_and_validate_hidden_facts(line_wrong, set(), ctx=mock_ctx)
         self.assertIn("[UNSUPPORTED]", cleaned_wrong)
 
+    def test_m7a17_final_verdict_and_action_closure(self):
+        from cineverdict_agent.agents.validators import (
+            clean_and_validate_hidden_facts,
+            make_schedule_conditional,
+            fail_closed_on_unsupported_sentences,
+            get_allowed_words
+        )
+
+        # Setup mock Research Ledger with E1 (dependency & alignment), E2 (rights standard terms) and E3 (independence)
+        research_ledger = """
+        ### EVIDENCE LEDGER
+        #### E1
+        * **Claim:** E1 states the internal release is contractually tied to and aligned with the external launch.
+        * **Supporting Excerpt:** "internal release must align with and is contractually tied to the external launch"
+
+        #### E2
+        * **Claim:** Under Vast Space's Media Assets Terms of Use, users may download and use media assets for news, educational, and other purposes that do not involve direct commercial exploitation of the media assets, the Vast trademark, or the Vast logo, and do not claim or imply endorsement or affiliation with Vast in the absence of such relationship, provided they are captioned crediting Vast and not modified except for routine presentation and formatting adjustments.
+        * **Supporting Excerpt:** "You may download and use our media assets... for news and educational purposes... do not involve direct commercial exploitation... caption them crediting Vast and may not modify them"
+
+        #### E3
+        * **Claim:** E3 states the production timeline operates independently of the external launch schedule.
+        * **Supporting Excerpt:** "production timeline operates independently of the external launch schedule"
+        """
+
+        mock_ctx = MagicMock()
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = research_ledger
+        
+        mock_event_director = MagicMock()
+        mock_event_director.author = "director_agent"
+        mock_event_director.output = "A short documentary about Vast Space's Haven-1."
+        
+        mock_event_user = MagicMock()
+        mock_event_user.author = "user"
+        mock_event_user.output = "Evaluate documentary about Vast Space."
+        
+        mock_ctx.session.events = [mock_event_research, mock_event_director, mock_event_user]
+
+        allowed_words = get_allowed_words(mock_ctx)
+
+        # 1. Market & Production E2 supported fact survives
+        line_supported = "Under Vast Space's Media Assets Terms of Use, users may download and use media assets for news, educational, and other purposes [E2]."
+        out_supported = clean_and_validate_hidden_facts(line_supported, allowed_words, ctx=mock_ctx)
+        self.assertEqual(out_supported, line_supported)
+
+        # 2. Unsupported factual opening fails without destroying the independent valid uncertainty (Clausal/Sentence fail-closed)
+        sentence_unsupported = "Vast Space has granted full permission to the crew on-site at Acme [E2]."
+        sentence_uncertainty = "Because the project's budget/funding status was not supplied and the distribution strategy is unspecified, it remains unresolved whether the intended documentary satisfies these standard terms and whether any additional authorization is available beyond them."
+        bullet_input = f"* {sentence_unsupported} {sentence_uncertainty}"
+        
+        cleaned_bullet = clean_and_validate_hidden_facts(bullet_input, allowed_words, ctx=mock_ctx)
+        self.assertIn("[UNSUPPORTED]", cleaned_bullet)
+        
+        final_bullet = fail_closed_on_unsupported_sentences(cleaned_bullet)
+        # Sentence 1 fails closed, but Sentence 2 survives intact and remains highly readable!
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", final_bullet)
+        self.assertIn(sentence_uncertainty, final_bullet)
+
+        # 3. UNKNOWN relationship Strategic Action is neutralized to the domain-general shape
+        action_unk = "- Define the project's internal production schedule, budget, and funding, and conditionally determine whether to align the delivery or editorial focus with the Q1 2027 external launch target."
+        out_action_unk = make_schedule_conditional(action_unk, ctx=mock_ctx)
+        self.assertIn("without presupposing a dependency, alignment, or independence relationship to the external event", out_action_unk)
+        self.assertIn("separately determine whether any such relationship is intended or required", out_action_unk)
+
+        # 4. Supported dependency action survives
+        action_dep = "- Establish dependency-aware scheduling since the internal release is contractually tied to external launch [E1]."
+        out_action_dep = make_schedule_conditional(action_dep, ctx=mock_ctx)
+        self.assertEqual(out_action_dep, action_dep)
+
+        # 5. Supported alignment action survives
+        action_align = "- Align the release timeline because release must align with external event [E1]."
+        out_action_align = make_schedule_conditional(action_align, ctx=mock_ctx)
+        self.assertEqual(out_action_align, action_align)
+
+        # 6. Supported independence action survives
+        action_ind = "- Establish the internal schedule independently of the external launch schedule since they operate independently [E3]."
+        out_action_ind = make_schedule_conditional(action_ind, ctx=mock_ctx)
+        self.assertEqual(out_action_ind, action_ind)
+
+        # 7. Wrong-citation relationship does NOT survive (E2 cited for dependency planning)
+        action_wrong = "- Align the release timeline because release must align with external event [E2]."
+        out_action_wrong = make_schedule_conditional(action_wrong, ctx=mock_ctx)
+        self.assertIn("without presupposing a dependency, alignment, or independence", out_action_wrong)
+
+        # 8. Negative Controls for E2 legal/rights boundaries
+        # E2 does not authorize "Approved"
+        line_neg1 = "Vast Space has Approved the documentary [E2]."
+        self.assertIn("[UNSUPPORTED]", clean_and_validate_hidden_facts(line_neg1, allowed_words, ctx=mock_ctx))
+        
+        # E2 does not authorize "Permitted"
+        line_neg2 = "Commercial use of standard media assets is Permitted [E2]."
+        self.assertIn("[UNSUPPORTED]", clean_and_validate_hidden_facts(line_neg2, allowed_words, ctx=mock_ctx))
+        
+        # E2 does not authorize "Additional" / "Rights" / "Required"
+        line_neg3 = "No Additional Rights are Required [E2]."
+        self.assertIn("[UNSUPPORTED]", clean_and_validate_hidden_facts(line_neg3, allowed_words, ctx=mock_ctx))
+        
+        # E2 does not authorize "Production" / "Permission"
+        line_neg4 = "The Production has Permission [E2]."
+        self.assertIn("[UNSUPPORTED]", clean_and_validate_hidden_facts(line_neg4, allowed_words, ctx=mock_ctx))
+
+        # E2 does not authorize unsupported location (Long Beach is in E1 but NOT E2)
+        line_neg5 = "The media assets are managed in Long Beach [E2]."
+        self.assertIn("[UNSUPPORTED]", clean_and_validate_hidden_facts(line_neg5, allowed_words, ctx=mock_ctx))
+
+        # E2 does not authorize unsupported date/number (Q1 2027 is in E1 but NOT E2)
+        line_neg6 = "The terms were modified in Q1 2027 [E2]."
+        self.assertIn("[UNSUPPORTED]", clean_and_validate_hidden_facts(line_neg6, allowed_words, ctx=mock_ctx))
+
 
 if __name__ == "__main__":
     unittest.main()

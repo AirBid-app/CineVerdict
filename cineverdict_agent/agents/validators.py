@@ -206,7 +206,7 @@ def classify_sentence_role(sentence: str) -> str:
         "verify", "determine", "evaluate", "assess", "confirm", "investigate",
         "obtain", "coordinate", "align", "track", "clarify", "ensure", "analyze",
         "identify", "explore", "mitigate", "address", "check", "review", "compare",
-        "establish"
+        "establish", "define", "formulate", "schedule", "plan"
     }
 
     # Strip list markers
@@ -680,7 +680,10 @@ def extract_claims(research_text: str) -> list[str]:
                 line_lower.startswith("supporting excerpt:") or
                 line_lower.startswith("- **supporting excerpt**:") or
                 "supporting excerpt" in line_lower or
-                "claim" in line_lower
+                "claim:" in line_lower or
+                "claims:" in line_lower or
+                "- **claim**:" in line_lower or
+                "* **claim**:" in line_lower
             ):
                 break
             claim_lines.append(line)
@@ -1385,7 +1388,38 @@ def neutralize_evidence_strength_upgrades(text: str) -> str:
     return text
 
 
-def make_schedule_conditional(text: str) -> str:
+def is_relationship_supported(relationship_type: str, cited_ids: list[str], ctx) -> bool:
+    if not ctx or not cited_ids:
+        return False
+    research_text = get_research_text(ctx)
+    if not research_text:
+        return False
+    ev_map = get_evidence_excerpts_map(research_text)
+    ev_claims_map = get_evidence_claims_map(research_text)
+    
+    words_to_check = []
+    if relationship_type == "dependency":
+        words_to_check = ["dependent", "depends", "dependency", "contractually tied", "tied", "dictated"]
+    elif relationship_type == "alignment":
+        words_to_check = ["align", "alignment", "aligned", "must align", "coordinate"]
+    elif relationship_type == "independence":
+        words_to_check = ["independent", "independently", "independence"]
+        
+    for cid in cited_ids:
+        excerpts = ev_map.get(cid, [])
+        for exc in excerpts:
+            exc_lower = exc.lower()
+            if any(re.search(rf"\b{re.escape(w)}\b", exc_lower) for w in words_to_check):
+                return True
+        claims = ev_claims_map.get(cid, [])
+        for clm in claims:
+            clm_lower = clm.lower()
+            if any(re.search(rf"\b{re.escape(w)}\b", clm_lower) for w in words_to_check):
+                return True
+    return False
+
+
+def make_schedule_conditional(text: str, ctx=None) -> str:
     """Enforces conditional treatment of external schedules to prevent unverified internal project dependencies."""
     # 1. Backward-compatible classic mappings
     schedule_mappings = {
@@ -1478,9 +1512,50 @@ def make_schedule_conditional(text: str) -> str:
             s_lower = sentence.lower()
 
             # Skip if sentence is already neutralized/conditionalized to prevent double neutralization
-            if "whether" in s_lower or "remains unverified" in s_lower or "remains unknown" in s_lower or "remains to be verified" in s_lower:
+            if "without presupposing" in s_lower or s_lower.strip().startswith("whether") or "remains unverified" in s_lower or "remains unknown" in s_lower or "remains to be verified" in s_lower:
                 processed_sentences.append(sentence)
                 continue
+
+            # Dynamic schedule relationship neutralization
+            has_alignment_word = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["align", "alignment", "aligning"])
+            has_independence_word = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["independent", "independently", "independence"])
+            has_dependency_word = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["tie", "tying", "tied", "depend", "depends", "dependency", "dependent"])
+
+            has_relation_action = has_alignment_word or has_independence_word or has_dependency_word
+            
+            # Check if this sentence is an action recommendation or a next action
+            is_action_sentence = classify_sentence_role(sentence) == "action" or "action" in s_lower
+            
+            if ctx is not None and has_relation_action and is_action_sentence:
+                has_schedule_terms = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["schedule", "timeline", "timelines", "schedules", "delivery", "release", "production", "post-production", "editorial", "documentary", "project", "film"])
+                has_external_terms = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["external", "launch", "milestone", "event", "q1", "2027"])
+                
+                if has_schedule_terms and has_external_terms:
+                    cited_ids = parse_cited_evidence_ids(sentence)
+                    
+                    is_supported = True
+                    if has_alignment_word and not is_relationship_supported("alignment", cited_ids, ctx):
+                        is_supported = False
+                    if has_independence_word and not is_relationship_supported("independence", cited_ids, ctx):
+                        is_supported = False
+                    if has_dependency_word and not is_relationship_supported("dependency", cited_ids, ctx):
+                        is_supported = False
+                        
+                    if not is_supported:
+                        bullet_match = re.match(r'^(\s*(?:-\s*|\*\s*|\d+\.\s*))', sentence)
+                        bullet_prefix = bullet_match.group(1) if bullet_match else ""
+                        
+                        trailing_ws = ""
+                        m = re.search(r'(\s+)$', sentence)
+                        if m:
+                            trailing_ws = m.group(1)
+                        
+                        sentence = f"{bullet_prefix}Define the project's internal production schedule, budget, and funding without presupposing a dependency, alignment, or independence relationship to the external event, and separately determine whether any such relationship is intended or required.{trailing_ws}"
+                        processed_sentences.append(sentence)
+                        continue
+                    else:
+                        processed_sentences.append(sentence)
+                        continue
 
             # Apply classic schedule mappings
             for pattern, replacement in schedule_mappings.items():
@@ -1650,7 +1725,7 @@ def market_after_model_callback(callback_context, llm_response: LlmResponse) -> 
                     _trace_log(f"[Stage: Evidence Strength Upgrades Neutralization] Modified text.\nBefore:\n{before_ev_str}\nAfter:\n{text}\n")
 
                 before_sched = text
-                text = make_schedule_conditional(text)
+                text = make_schedule_conditional(text, ctx=ctx)
                 if text != before_sched:
                     _trace_log(f"[Stage 12] Schedule semantic guard:\nBefore:\n{before_sched}\nAfter:\n{text}\n")
 
@@ -1714,7 +1789,7 @@ def production_risk_after_model_callback(
                     _trace_log(f"[Stage: Evidence Strength Upgrades Neutralization] Modified text.\nBefore:\n{before_ev_str}\nAfter:\n{text}\n")
 
                 before_sched = text
-                text = make_schedule_conditional(text)
+                text = make_schedule_conditional(text, ctx=ctx)
                 if text != before_sched:
                     _trace_log(f"[Stage 12] Schedule semantic guard:\nBefore:\n{before_sched}\nAfter:\n{text}\n")
 
@@ -1771,7 +1846,7 @@ def verdict_after_model_callback(callback_context, llm_response: LlmResponse) ->
                     _trace_log(f"[Stage: Evidence Strength Upgrades Neutralization] Modified text.\nBefore:\n{before_ev_str}\nAfter:\n{text}\n")
 
                 before_sched = text
-                text = make_schedule_conditional(text)
+                text = make_schedule_conditional(text, ctx=ctx)
                 if text != before_sched:
                     _trace_log(f"[Stage 12] Schedule semantic guard:\nBefore:\n{before_sched}\nAfter:\n{text}\n")
 

@@ -747,17 +747,161 @@ def extract_and_normalize_words(text: str) -> set[str]:
     return words_set
 
 
+def split_table_row_cells(line: str) -> list[str]:
+    cells = []
+    current_cell = []
+    escaped = False
+
+    for char in line:
+        if escaped:
+            current_cell.append(char)
+            escaped = False
+        elif char == "\\":
+            escaped = True
+            current_cell.append(char)
+        elif char == "|":
+            cells.append("".join(current_cell))
+            current_cell = []
+        else:
+            current_cell.append(char)
+    cells.append("".join(current_cell))
+
+    if cells and cells[0] == "":
+        cells.pop(0)
+    if cells and cells[-1].strip() == "":
+        cells.pop()
+
+    return [c.strip() for c in cells]
+
+
+def parse_evidence_ledger_table(research_text: str) -> tuple[dict[str, list[str]], dict[str, list[str]]] | None:
+    if not research_text:
+        return None
+
+    lines = [line.strip() for line in research_text.split("\n") if line.strip()]
+
+    header_idx = -1
+    for idx, line in enumerate(lines):
+        if "|" in line:
+            cells = [c.lower() for c in split_table_row_cells(line)]
+            if any("e#" in c for c in cells) and any("claim" in c for c in cells) and any("supporting excerpt" in c for c in cells):
+                header_idx = idx
+                break
+
+    if header_idx == -1:
+        return None
+
+    if header_idx + 1 >= len(lines):
+        return None
+
+    sep_line = lines[header_idx + 1]
+    if not sep_line.startswith("|"):
+        return None
+    if not re.match(r"^[|:\-\s]+$", sep_line):
+        return None
+
+    header_cells = [c.lower() for c in split_table_row_cells(lines[header_idx])]
+    col_e = -1
+    col_claim = -1
+    col_excerpt = -1
+
+    for c_idx, cell in enumerate(header_cells):
+        if "e#" in cell:
+            col_e = c_idx
+        elif "claim" in cell:
+            col_claim = c_idx
+        elif "supporting excerpt" in cell:
+            col_excerpt = c_idx
+
+    if col_e == -1 or col_claim == -1 or col_excerpt == -1:
+        return None
+
+    excerpts_map = {}
+    claims_map = {}
+
+    for line in lines[header_idx + 2:]:
+        if not line.startswith("|"):
+            continue
+
+        cells = split_table_row_cells(line)
+        if len(cells) <= max(col_e, col_claim, col_excerpt):
+            # Malformed row with inconsistent cell counts
+            return {}, {}
+
+        e_raw = cells[col_e]
+        e_clean = re.sub(r"[*\s_`]", "", e_raw).lower()
+        if not re.match(r"^e\d+$", e_clean):
+            if not e_clean:
+                continue
+            # Malformed row with invalid E#
+            return {}, {}
+
+        claim_val = cells[col_claim].strip()
+        claim_val = claim_val.replace("\\|", "|")
+        if claim_val.startswith(">"):
+            claim_val = claim_val[1:].strip()
+        if claim_val.startswith('"') and claim_val.endswith('"'):
+            claim_val = claim_val[1:-1].strip()
+        elif claim_val.startswith('"'):
+            claim_val = claim_val.strip('"').strip()
+
+        excerpt_val = cells[col_excerpt].strip()
+        excerpt_val = excerpt_val.replace("\\|", "|")
+        if excerpt_val.startswith(">"):
+            excerpt_val = excerpt_val[1:].strip()
+        if excerpt_val.startswith('"') and excerpt_val.endswith('"'):
+            excerpt_val = excerpt_val[1:-1].strip()
+        elif excerpt_val.startswith('"'):
+            excerpt_val = excerpt_val.strip('"').strip()
+
+        if claim_val:
+            if e_clean not in claims_map:
+                claims_map[e_clean] = []
+            claims_map[e_clean].append(claim_val)
+
+        if excerpt_val:
+            if e_clean not in excerpts_map:
+                excerpts_map[e_clean] = []
+            excerpts_map[e_clean].append(excerpt_val)
+
+    return excerpts_map, claims_map
+
+
+def merge_evidence_maps(map1: dict[str, list[str]], map2: dict[str, list[str]]) -> dict[str, list[str]]:
+    merged = {}
+    for k in set(map1.keys()) | set(map2.keys()):
+        merged[k] = []
+        if k in map1:
+            merged[k].extend(map1[k])
+        if k in map2:
+            merged[k].extend(map2[k])
+    return merged
+
+
 def get_allowed_words(ctx) -> set[str]:
     allowed = set()
     # 1. From Supporting Excerpts & Claims
     research_text = get_research_text(ctx)
-    excerpts = extract_supporting_excerpts(research_text)
-    for exc in excerpts:
-        allowed.update(extract_and_normalize_words(exc))
+    if research_text:
+        # Direct sequential/bullet extraction for backward compatibility with headerless/mock ledgers
+        excerpts = extract_supporting_excerpts(research_text)
+        for exc in excerpts:
+            allowed.update(extract_and_normalize_words(exc))
 
-    claims = extract_claims(research_text)
-    for clm in claims:
-        allowed.update(extract_and_normalize_words(clm))
+        claims = extract_claims(research_text)
+        for clm in claims:
+            allowed.update(extract_and_normalize_words(clm))
+
+        # Map-based extraction to support Markdown tables and sequential formats with E# headers
+        excerpts_map = get_evidence_excerpts_map(research_text)
+        for excerpts in excerpts_map.values():
+            for exc in excerpts:
+                allowed.update(extract_and_normalize_words(exc))
+
+        claims_map = get_evidence_claims_map(research_text)
+        for claims in claims_map.values():
+            for clm in claims:
+                allowed.update(extract_and_normalize_words(clm))
 
     # 2. From Director Plan
     director_text = get_director_text(ctx)
@@ -792,10 +936,19 @@ def get_allowed_words(ctx) -> set[str]:
 
 def get_evidence_excerpts_map(research_text: str) -> dict[str, list[str]]:
     """Maps evidence keys (e.g. 'e1', 'e2') to their list of Supporting Excerpts."""
-    ev_map = {}
     if not research_text:
-        return ev_map
+        return {}
 
+    table_excerpts = {}
+    has_table = False
+    if "|" in research_text and "E#" in research_text:
+        table_parsed = parse_evidence_ledger_table(research_text)
+        if table_parsed is not None:
+            table_excerpts, _ = table_parsed
+            has_table = True
+            _trace_log("Ledger format detected: table")
+
+    seq_excerpts = {}
     # Regex to find evidence headers: E# at start of lines (possibly with Markdown decoration)
     header_pattern = re.compile(
         r'(?:^|\n)[ \t]*(?:'
@@ -814,30 +967,40 @@ def get_evidence_excerpts_map(research_text: str) -> dict[str, list[str]]:
             key = parts[i].lower().strip()
             body = parts[i+1]
             excerpts = extract_supporting_excerpts(body)
-            if key not in ev_map:
-                ev_map[key] = []
-            ev_map[key].extend(excerpts)
-        return ev_map
+            if key not in seq_excerpts:
+                seq_excerpts[key] = []
+            seq_excerpts[key].extend(excerpts)
+    else:
+        for idx, match in enumerate(matches):
+            key = (match.group(2) or match.group(3) or match.group(5)).lower().strip()
+            start_idx = match.end()
+            end_idx = matches[idx + 1].start() if idx + 1 < len(matches) else len(research_text)
+            body = research_text[start_idx:end_idx]
+            excerpts = extract_supporting_excerpts(body)
+            if key not in seq_excerpts:
+                seq_excerpts[key] = []
+            seq_excerpts[key].extend(excerpts)
 
-    for idx, match in enumerate(matches):
-        key = (match.group(2) or match.group(3) or match.group(5)).lower().strip()
-        start_idx = match.end()
-        end_idx = matches[idx + 1].start() if idx + 1 < len(matches) else len(research_text)
-        body = research_text[start_idx:end_idx]
-        excerpts = extract_supporting_excerpts(body)
-        if key not in ev_map:
-            ev_map[key] = []
-        ev_map[key].extend(excerpts)
-
-    return ev_map
+    if has_table:
+        return merge_evidence_maps(table_excerpts, seq_excerpts)
+    _trace_log("Ledger format detected: sequential")
+    return seq_excerpts
 
 
 def get_evidence_claims_map(research_text: str) -> dict[str, list[str]]:
     """Maps evidence keys (e.g. 'e1', 'e2') to their list of Claims."""
-    ev_claims_map = {}
     if not research_text:
-        return ev_claims_map
+        return {}
 
+    table_claims = {}
+    has_table = False
+    if "|" in research_text and "E#" in research_text:
+        table_parsed = parse_evidence_ledger_table(research_text)
+        if table_parsed is not None:
+            _, table_claims = table_parsed
+            has_table = True
+
+    seq_claims = {}
     header_pattern = re.compile(
         r'(?:^|\n)[ \t]*(?:'
         r'(#+)[ \t]*(E\d+)\b|'  # Case 1: Markdown heading, e.g., ### E1
@@ -854,22 +1017,23 @@ def get_evidence_claims_map(research_text: str) -> dict[str, list[str]]:
             key = parts[i].lower().strip()
             body = parts[i+1]
             claims = extract_claims(body)
-            if key not in ev_claims_map:
-                ev_claims_map[key] = []
-            ev_claims_map[key].extend(claims)
-        return ev_claims_map
+            if key not in seq_claims:
+                seq_claims[key] = []
+            seq_claims[key].extend(claims)
+    else:
+        for idx, match in enumerate(matches):
+            key = (match.group(2) or match.group(3) or match.group(5)).lower().strip()
+            start_idx = match.end()
+            end_idx = matches[idx + 1].start() if idx + 1 < len(matches) else len(research_text)
+            body = research_text[start_idx:end_idx]
+            claims = extract_claims(body)
+            if key not in seq_claims:
+                seq_claims[key] = []
+            seq_claims[key].extend(claims)
 
-    for idx, match in enumerate(matches):
-        key = (match.group(2) or match.group(3) or match.group(5)).lower().strip()
-        start_idx = match.end()
-        end_idx = matches[idx + 1].start() if idx + 1 < len(matches) else len(research_text)
-        body = research_text[start_idx:end_idx]
-        claims = extract_claims(body)
-        if key not in ev_claims_map:
-            ev_claims_map[key] = []
-        ev_claims_map[key].extend(claims)
-
-    return ev_claims_map
+    if has_table:
+        return merge_evidence_maps(table_claims, seq_claims)
+    return seq_claims
 
 
 def parse_cited_evidence_ids(line: str) -> list[str]:
@@ -1396,7 +1560,7 @@ def is_relationship_supported(relationship_type: str, cited_ids: list[str], ctx)
         return False
     ev_map = get_evidence_excerpts_map(research_text)
     ev_claims_map = get_evidence_claims_map(research_text)
-    
+
     words_to_check = []
     if relationship_type == "dependency":
         words_to_check = ["dependent", "depends", "dependency", "contractually tied", "tied", "dictated"]
@@ -1404,7 +1568,7 @@ def is_relationship_supported(relationship_type: str, cited_ids: list[str], ctx)
         words_to_check = ["align", "alignment", "aligned", "must align", "coordinate"]
     elif relationship_type == "independence":
         words_to_check = ["independent", "independently", "independence"]
-        
+
     for cid in cited_ids:
         excerpts = ev_map.get(cid, [])
         for exc in excerpts:
@@ -1522,17 +1686,17 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
             has_dependency_word = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["tie", "tying", "tied", "depend", "depends", "dependency", "dependent"])
 
             has_relation_action = has_alignment_word or has_independence_word or has_dependency_word
-            
+
             # Check if this sentence is an action recommendation or a next action
             is_action_sentence = classify_sentence_role(sentence) == "action" or "action" in s_lower
-            
+
             if ctx is not None and has_relation_action and is_action_sentence:
                 has_schedule_terms = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["schedule", "timeline", "timelines", "schedules", "delivery", "release", "production", "post-production", "editorial", "documentary", "project", "film"])
                 has_external_terms = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["external", "launch", "milestone", "event", "q1", "2027"])
-                
+
                 if has_schedule_terms and has_external_terms:
                     cited_ids = parse_cited_evidence_ids(sentence)
-                    
+
                     is_supported = True
                     if has_alignment_word and not is_relationship_supported("alignment", cited_ids, ctx):
                         is_supported = False
@@ -1540,16 +1704,16 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
                         is_supported = False
                     if has_dependency_word and not is_relationship_supported("dependency", cited_ids, ctx):
                         is_supported = False
-                        
+
                     if not is_supported:
                         bullet_match = re.match(r'^(\s*(?:-\s*|\*\s*|\d+\.\s*))', sentence)
                         bullet_prefix = bullet_match.group(1) if bullet_match else ""
-                        
+
                         trailing_ws = ""
                         m = re.search(r'(\s+)$', sentence)
                         if m:
                             trailing_ws = m.group(1)
-                        
+
                         sentence = f"{bullet_prefix}Define the project's internal production schedule, budget, and funding without presupposing a dependency, alignment, or independence relationship to the external event, and separately determine whether any such relationship is intended or required.{trailing_ws}"
                         processed_sentences.append(sentence)
                         continue

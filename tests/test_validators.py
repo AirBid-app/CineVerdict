@@ -1804,15 +1804,15 @@ Supporting Excerpt: "Website terms allow Paramount."
         mock_event_research = MagicMock()
         mock_event_research.author = "research_agent"
         mock_event_research.output = research_ledger
-        
+
         mock_event_director = MagicMock()
         mock_event_director.author = "director_agent"
         mock_event_director.output = "A short documentary about Vast Space's Haven-1."
-        
+
         mock_event_user = MagicMock()
         mock_event_user.author = "user"
         mock_event_user.output = "Evaluate documentary about Vast Space."
-        
+
         mock_ctx.session.events = [mock_event_research, mock_event_director, mock_event_user]
 
         allowed_words = get_allowed_words(mock_ctx)
@@ -1826,10 +1826,10 @@ Supporting Excerpt: "Website terms allow Paramount."
         sentence_unsupported = "Vast Space has granted full permission to the crew on-site at Acme [E2]."
         sentence_uncertainty = "Because the project's budget/funding status was not supplied and the distribution strategy is unspecified, it remains unresolved whether the intended documentary satisfies these standard terms and whether any additional authorization is available beyond them."
         bullet_input = f"* {sentence_unsupported} {sentence_uncertainty}"
-        
+
         cleaned_bullet = clean_and_validate_hidden_facts(bullet_input, allowed_words, ctx=mock_ctx)
         self.assertIn("[UNSUPPORTED]", cleaned_bullet)
-        
+
         final_bullet = fail_closed_on_unsupported_sentences(cleaned_bullet)
         # Sentence 1 fails closed, but Sentence 2 survives intact and remains highly readable!
         self.assertIn("[Factual proposition unverified due to missing evidence.]", final_bullet)
@@ -1865,15 +1865,15 @@ Supporting Excerpt: "Website terms allow Paramount."
         # E2 does not authorize "Approved"
         line_neg1 = "Vast Space has Approved the documentary [E2]."
         self.assertIn("[UNSUPPORTED]", clean_and_validate_hidden_facts(line_neg1, allowed_words, ctx=mock_ctx))
-        
+
         # E2 does not authorize "Permitted"
         line_neg2 = "Commercial use of standard media assets is Permitted [E2]."
         self.assertIn("[UNSUPPORTED]", clean_and_validate_hidden_facts(line_neg2, allowed_words, ctx=mock_ctx))
-        
+
         # E2 does not authorize "Additional" / "Rights" / "Required"
         line_neg3 = "No Additional Rights are Required [E2]."
         self.assertIn("[UNSUPPORTED]", clean_and_validate_hidden_facts(line_neg3, allowed_words, ctx=mock_ctx))
-        
+
         # E2 does not authorize "Production" / "Permission"
         line_neg4 = "The Production has Permission [E2]."
         self.assertIn("[UNSUPPORTED]", clean_and_validate_hidden_facts(line_neg4, allowed_words, ctx=mock_ctx))
@@ -1885,6 +1885,237 @@ Supporting Excerpt: "Website terms allow Paramount."
         # E2 does not authorize unsupported date/number (Q1 2027 is in E1 but NOT E2)
         line_neg6 = "The terms were modified in Q1 2027 [E2]."
         self.assertIn("[UNSUPPORTED]", clean_and_validate_hidden_facts(line_neg6, allowed_words, ctx=mock_ctx))
+
+    def test_m7a18_markdown_ledger_parser(self):
+        from cineverdict_agent.agents.validators import (
+            get_evidence_excerpts_map,
+            get_evidence_claims_map,
+            get_allowed_words,
+            clean_and_validate_hidden_facts,
+            market_after_model_callback,
+            production_risk_after_model_callback,
+            verdict_after_model_callback,
+            parse_evidence_ledger_table
+        )
+        from google.adk.models.llm_response import LlmResponse
+        from google.genai import types
+
+        # Exact post-M7A.17 Research Ledger Table Fixture
+        table_ledger = """
+### RESEARCH EVIDENCE BRIEF
+
+This brief summarizes the verified factual findings regarding Vast Space’s Haven-1 commercial space station program.
+
+### EVIDENCE LEDGER
+
+| E# | Claim | Verification Status | Source Title | Source URL | Publish Date | Supporting Excerpt |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **E1** | Vast Space announced plans in May 2023 to launch its Haven-1 space station on a SpaceX Falcon 9 rocket no earlier than August 2025, which was later updated to an expected launch of no earlier than May 2026. | PRIMARY-SOURCE VERIFIED | Vast Announces the Haven-1 and Vast-1 Missions. — an update by VAST | https://www.vastspace.com/updates/vast-announces-the-haven-1-and-vast-1-human-spaceflight-mission-launched-by-spacex-on-a-dragon-spacecraft | 2023-05-10 | "Scheduled to launch on a SpaceX Falcon 9 rocket to low-Earth orbit no earlier than August 2025, Haven-1 will initially act as an independent crewed space station prior to being... Haven-1, scheduled to be the world’s first commercial space station, is currently in development and is expected to launch NET May 2026." |
+| **E2** | Vast Space updated its Haven-1 launch readiness schedule to the first quarter of 2027, with the station contracted to launch on a SpaceX Falcon 9 from Cape Canaveral, Florida, and plans to conduct environmental tests at NASA's Neil Armstrong Test Facility later in 2026. | PRIMARY-SOURCE VERIFIED | Vast Advances Haven-1 Into Integration Phase | https://www.vastspace.com/updates/vast-advances-haven-1-into-integration-phase | 2026-01-20 | "Based on the current integration timeline, Vast is updating its schedule for Haven-1 to be ready to launch Q1 2027. Haven-1 is contracted to launch on a SpaceX Falcon 9 from Cape Canaveral, Florida... Vast remains focused on completing integration and conducting a suite of system environmental tests at NASA’s Neil Armstrong Test Facility later in 2026." |
+| **E3** | Vast Space's Haven-1 is designed for a crew of 4, has a diameter of 4.4 meters, a height of 10.1 meters, a mass of 14,600 kilograms, provides 13,200 watts of power, and operates in an orbit of 51.6 degrees at 425 kilometers, featuring a 45 cubic meter habitable volume, an 80 cubic meter pressurized volume, personal crew quarters, a 1.1-meter domed window, a deployable communal table, and Starlink connectivity engineered by SpaceX for two-week missions. | PRIMARY-SOURCE VERIFIED | Haven-1 | https://www.vastspace.com/haven-1 | null | "Two-week missions. 45 m³ habitable volume. Personal crew quarters. 1.1 m domed window. Deployable communal table. Starlink, engineered by SpaceX. HAVEN-1 Launching 2027 * crew: 4 * Diameter: 4.4 m * height: 10.1 m * HABITABLE VOLUME: 45 m³ * PRESSURIZED VOLUME: 80 m³ * mass: 14,600 kg * Power: 13,200 w * orbit: 51.6°, 425 km" |
+| **E4** | Vast Space launched its Haven Demo pathfinder satellite on November 2, 2025, on a SpaceX Falcon 9 Bandwagon-4 mission from Cape Canaveral to test radiation-tolerant computers, power systems, software, sensors, reaction control systems, propulsion, radios, ground stations, and command and control to prepare for Haven-1. | SECONDARY-SOURCE EVIDENCE | Friends of NASA: Haven Demo Satellite in Low-Earth Orbit: Solar Panel Deployment \\| Vast | https://www.friendsofnasa.org/2025/11/haven-demo-satellite-in-low-earth-orbit.html | 2025-11-03 | "It launched its pathfinder, Haven Demo, aboard a SpaceX Falcon 9 Bandwagon-4 mission on Sunday, Nov. 2, 2025, from Space Launch Complex 40 (SLC-40) at Cape Canaveral in Florida... Haven Demo will 'test radiation tolerant computers, power systems, software, sensors, reaction control systems, propulsion, radios, ground stations, and command and control to inform learnings for Haven-1, the world’s first commercial space station.'" |
+| **E5** | Under Vast Space's Media Assets Terms of Use, users may download and use the company's media assets for news, educational, and other purposes that do not involve direct commercial exploitation of the assets or Vast trademark/logo, provided the use does not falsely claim or imply endorsement or affiliation, and the assets are captioned as "Images courtesy of Vast" without modification beyond routine formatting adjustments. | PRIMARY-SOURCE VERIFIED | Media Assets Terms of Use — Vast | https://www.vastspace.com/media-assets-terms-of-use | 2023-06-13 | "You may download and use our media assets subject to this website’s Terms of Use and the following additional terms: * You may use the media assets for news and educational purposes and for other purposes that (i) do not involve direct commercial exploitation of the media assets or the Vast trademark or logo and (ii) are not used in manner that claims or implies an endorsement by or affiliation with Vast in the absence of such relationship. * When displaying media assets, you must caption them crediting Vast (ex: “Images courtesy of Vast”) and may not modify them (other than routine adjustments for presentation and formatting). * We may revoke the above permission in the event of your violation of the above terms." |
+| **E6** | France signed a two-mission agreement with Vast Space for missions to the International Space Station and Haven-1, with the Haven-1 crewed test flight scheduled for 2027, expected to last approximately two weeks, and featuring transport by SpaceX on a Dragon spacecraft launched by a Falcon 9. | PRIMARY-SOURCE VERIFIED | France Signs Historic Two-Mission Agreement with ... | https://www.vastspace.com/updates/france-vast-two-mission-agreement-iss-haven-1 | null | "France Signs Historic Two-Mission Agreement with Vast to the International Space Station and Haven-1, Scheduled to be the World’s First Commercial Space Station. Haven-1 test flight, the first crewed mission to Vast’s Haven-1 commercial space station scheduled to launch in 2027. Both missions are expected to last approximately two weeks and are planned for 2027, with transportation provided by SpaceX on a Dragon spacecraft launched aboard a Falcon 9" |
+| **E7** | Vast Space formed a strategic partnership with Cedars-Sinai focusing on stem cell and organoid research, alongside biomanufacturing technology demonstrations, to advance microgravity science and crew health on the Haven-1 commercial space station scheduled to launch in 2027. | SECONDARY-SOURCE EVIDENCE | Haven-1 — NewSpace.fyi | https://www.newspace.fyi/entity/haven-1 | null | "Vast has formed a strategic partnership with Cedars-Sinai to advance microgravity science and crew health aboard the upcoming Haven-1 commercial space station, scheduled for launch in 2027. This collaboration will focus on stem cell and organoid research, alongside biomanufacturing technology demonstrations, aimed at enhancing regenerative medicine, longevity, and disease modeling in microgravity environments." |
+| **E8** | Netflix and Time Studios co-produced a documentary titled "Countdown: Inspiration4 Mission to Space," directed by Jason Hehir, which represented a shift to near-real-time documentary production. | SECONDARY-SOURCE EVIDENCE | Netflix will co-produce a documentary about SpaceX's Inspiration4 mission \\| Space | https://www.space.com/netflix-announces-inspiration4-spacex-documentary | 2021-08-04 | "Netflix plans to produce a documentary, 'Countdown: Inspiration4 Mission to Space,' following the adventures of the... The documentary will be co-produced by Time Studios, and is directed by Jason Hehir — creator of the Michael Jordan series 'The Last Dance.' For Netflix, Inspiration4 will represent a new shift to near real-time documentary production" |
+| **E9** | Netflix distributed the 128-minute documentary film "Return to Space," produced by Little Monster Films and directed by Jimmy Chin and Elizabeth Chai Vasarhelyi, which was released on April 7, 2022. | SECONDARY-SOURCE EVIDENCE | Return to Space - Wikipedia | https://en.wikipedia.org/wiki/Return_to_Space | 2026-08-10 | "Return to Space is an American documentary film made for Netflix and directed by Jimmy Chin and Elizabeth Chai Vasarhelyi... The film was released on April 7, 2022. Running time 128 minutes... Production company Little Monster Films... Distributed by Netflix" |
+| **E10** | Netflix distributed "The Wonderful: Stories from the Space Station" in 2021, a documentary featuring interviews with astronauts to depict life on the International Space Station. | SECONDARY-SOURCE EVIDENCE | Watch The Wonderful: Stories from the Space Station \\| Netflix | https://www.netflix.com/title/81506134 | null | "The Wonderful: Stories from the Space Station... 2021... This documentary features stunning visuals and interviews with astronauts to build a snapshot of life on the International Space Station." |
+"""
+
+        # Set up mock invocation context
+        mock_ctx = MagicMock()
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = table_ledger
+
+        mock_event_director = MagicMock()
+        mock_event_director.author = "director_agent"
+        mock_event_director.output = "DIRECTOR PLAN - USER Premise: Vast Space film. Align the production schedule, release timeline, and milestone."
+
+        mock_event_user = MagicMock()
+        mock_event_user.author = "user"
+        mock_event_user.output = "Evaluate documentary about Vast Space."
+
+        mock_ctx.session.events = [mock_event_research, mock_event_director, mock_event_user]
+
+        # Stage 1: Verify exact parsing positive test
+        excerpts_map = get_evidence_excerpts_map(table_ledger)
+        claims_map = get_evidence_claims_map(table_ledger)
+
+        # Verify E1 claim & excerpt parsed
+        self.assertIn("e1", excerpts_map)
+        self.assertIn("e1", claims_map)
+        self.assertIn("Vast Space announced plans in May 2023", claims_map["e1"][0])
+        self.assertIn("Scheduled to launch on a SpaceX Falcon 9", excerpts_map["e1"][0])
+
+        # Verify E10 claim & excerpt parsed
+        self.assertIn("e10", excerpts_map)
+        self.assertIn("e10", claims_map)
+        self.assertIn("Netflix distributed \"The Wonderful:", claims_map["e10"][0])
+        self.assertIn("build a snapshot of life on the International Space Station", excerpts_map["e10"][0])
+
+        # Verify E1 and E10 are isolated and not confused (Negative controls 1 & 2)
+        self.assertNotEqual(claims_map["e1"], claims_map["e10"])
+        self.assertNotEqual(excerpts_map["e1"], excerpts_map["e10"])
+
+        # Citing [E1] must not authorize E10-only fact
+        line_neg_e1_e10 = "Netflix distributed a space documentary in 2021 [E1]."
+        self.assertIn("[UNSUPPORTED]", clean_and_validate_hidden_facts(line_neg_e1_e10, get_allowed_words(mock_ctx), ctx=mock_ctx))
+
+        # Citing [E10] must not authorize E1-only fact
+        line_neg_e10_e1 = "Vast Space targeted a launch in August 2025 [E10]."
+        self.assertIn("[UNSUPPORTED]", clean_and_validate_hidden_facts(line_neg_e10_e1, get_allowed_words(mock_ctx), ctx=mock_ctx))
+
+        # Stage 2: Dynamic E# scale positive test
+        dynamic_ledger = """
+| E# | Claim | Verification Status | Source Title | Source URL | Publish Date | Supporting Excerpt |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **E25** | CEDARS-SINAI research on stem cells in microgravity. | PRIMARY | Title | http://url | null | Cedars-Sinai microgravity research is established. |
+"""
+        excerpts_dynamic = get_evidence_excerpts_map(dynamic_ledger)
+        self.assertIn("e25", excerpts_dynamic)
+        self.assertEqual(excerpts_dynamic["e25"][0], "Cedars-Sinai microgravity research is established.")
+
+        # Stage 3: Claim containing "claim" test (M7A.17 regression and Claim label verification)
+        claim_word_ledger = """
+| E# | Claim | Verification Status | Source Title | Source URL | Publish Date | Supporting Excerpt |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **E5** | Use must not falsely claim or imply endorsement or affiliation. | PRIMARY | Title | http://url | null | must not claim or imply endorsement |
+"""
+        claims_word = get_evidence_claims_map(claim_word_ledger)
+        self.assertEqual(claims_word["e5"][0], "Use must not falsely claim or imply endorsement or affiliation.")
+
+        # Stage 4: Preservation of sequential and bullet formats
+        seq_ledger = """
+### EVIDENCE LEDGER
+#### E1
+* **Claim:** E1 states the primary facility is in Long Beach.
+* **Supporting Excerpt:** "Vast facility in Long Beach"
+"""
+        claims_seq = get_evidence_claims_map(seq_ledger)
+        self.assertEqual(claims_seq["e1"][0], "** E1 states the primary facility is in Long Beach.")
+
+        bullet_ledger = """
+E1:
+Claim: The primary facility of Vast Space is in Long Beach.
+Supporting Excerpt: "Vast facility in Long Beach"
+"""
+        claims_bullet = get_evidence_claims_map(bullet_ledger)
+        self.assertEqual(claims_bullet["e1"][0], "The primary facility of Vast Space is in Long Beach.")
+
+        # Stage 5: Empty Claim or Empty Excerpt behavior
+        empty_claim_ledger = """
+| E# | Claim | Verification Status | Source Title | Source URL | Publish Date | Supporting Excerpt |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **E1** | | PRIMARY | Title | http://url | null | Excerpt exists |
+"""
+        ex_empty, cl_empty = parse_evidence_ledger_table(empty_claim_ledger)
+        self.assertNotIn("e1", cl_empty)
+        self.assertIn("e1", ex_empty)
+        self.assertEqual(ex_empty["e1"][0], "Excerpt exists")
+
+        # Stage 6: Duplicate E# Rows (safe option: append)
+        dup_ledger = """
+| E# | Claim | Verification Status | Source Title | Source URL | Publish Date | Supporting Excerpt |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **E1** | First Claim | PRIMARY | Title | http://url | null | First Excerpt |
+| **E1** | Second Claim | PRIMARY | Title | http://url | null | Second Excerpt |
+"""
+        ex_dup, cl_dup = parse_evidence_ledger_table(dup_ledger)
+        self.assertEqual(len(cl_dup["e1"]), 2)
+        self.assertEqual(cl_dup["e1"][0], "First Claim")
+        self.assertEqual(cl_dup["e1"][1], "Second Claim")
+
+        # Stage 7: Malformed and arbitrary tables fail closed
+        malformed_table_1 = """
+| E# | Claim |
+| E1 | something |
+"""
+        self.assertIsNone(parse_evidence_ledger_table(malformed_table_1))
+
+        malformed_table_2 = """
+| E# | Claim | Verification Status | Source Title | Source URL | Publish Date | Supporting Excerpt |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **E1** | Inconsistent columns | PRIMARY |
+"""
+        ex_mal, cl_mal = parse_evidence_ledger_table(malformed_table_2)
+        self.assertEqual(ex_mal, {})
+        self.assertEqual(cl_mal, {})
+
+        arbitrary_table = """
+| Product | Price |
+| :--- | :--- |
+| Widget | $10 |
+"""
+        self.assertIsNone(parse_evidence_ledger_table(arbitrary_table))
+
+        # Stage 8: Pipe & cell robustness (including escaped pipe, punctuation, quotes)
+        robust_ledger = """
+| E# | Claim | Verification Status | Source Title | Source URL | Publish Date | Supporting Excerpt |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **E1** | A \\| B with url https://vast.space/test?q=1&p=2 | PRIMARY | Title | http://url | 2026-08-24 | "This is \"robust\" excerpt; yes, it has punctuation!" |
+"""
+        ex_rob, cl_rob = parse_evidence_ledger_table(robust_ledger)
+        self.assertEqual(cl_rob["e1"][0], "A | B with url https://vast.space/test?q=1&p=2")
+        self.assertEqual(ex_rob["e1"][0], "This is \"robust\" excerpt; yes, it has punctuation!")
+
+        # Stage 9: Source Title / URL / Publish Date metadata NOT authorizing content
+        allowed_metadata = get_allowed_words(mock_ctx)
+        # Proper noun inside Source Title only must NOT be authorized (e.g., "VAST" which is uppercase, or "Announces" / "Missions")
+        # Let's test that clean_and_validate_hidden_facts redacts them when cited E1 but not in claim/excerpt content
+        # Note that E1 claim/excerpt has "Vast" but not "Announces" or "Missions".
+        line_unauth_title = "The documentary represents the Announces [E1]."
+        output_title = clean_and_validate_hidden_facts(line_unauth_title, allowed_metadata, ctx=mock_ctx)
+        self.assertIn("[UNSUPPORTED]", output_title)
+
+        # Stage 10: Mixed table and sequential format integration
+        mixed_ledger = """
+| E# | Claim | Verification Status | Source Title | Source URL | Publish Date | Supporting Excerpt |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **E1** | Table Claim | PRIMARY | Title | http://url | null | Table Excerpt |
+
+### EVIDENCE LEDGER
+#### E1
+* **Claim:** Sequential Claim
+* **Supporting Excerpt:** "Sequential Excerpt"
+"""
+        ex_mixed = get_evidence_excerpts_map(mixed_ledger)
+        cl_mixed = get_evidence_claims_map(mixed_ledger)
+        self.assertEqual(len(cl_mixed["e1"]), 2)
+        self.assertIn("Table Claim", cl_mixed["e1"])
+        self.assertIn("** Sequential Claim", cl_mixed["e1"])
+        self.assertEqual(len(ex_mixed["e1"]), 2)
+        self.assertIn("Table Excerpt", ex_mixed["e1"])
+        self.assertIn('** "Sequential Excerpt"', ex_mixed["e1"])
+
+        # Stage 11: Exact Live Replay validations (Market, Production, Verdict callbacks)
+        mock_callback_ctx = MagicMock(spec=Context)
+        mock_callback_ctx.get_invocation_context.return_value = mock_ctx
+
+        # Market Exact Live Replay
+        raw_market = "MARKET ANALYSIS\n\n- VERIFIED EVIDENCE [E1]: Vast Space announced plans in May 2023 to launch its Haven-1 space station on a SpaceX Falcon 9 rocket no earlier than August 2025, which was later updated to an expected launch of no earlier than May 2026 [E1]."
+        llm_response_market = LlmResponse(content=types.Content(role="model", parts=[types.Part(text=raw_market)]))
+        res_m = market_after_model_callback(mock_callback_ctx, llm_response_market)
+        # res_m is None means unmodified (survives completely intact because table E1 is parsed!)
+        self.assertIsNone(res_m)
+
+        # Production Exact Live Replay
+        raw_production = "PRODUCTION & RISK ANALYSIS\n\n- SECONDARY EVIDENCE [E4]: Vast Space launched its Haven Demo pathfinder satellite on November 2, 2025, on a SpaceX Falcon 9 Bandwagon-4 mission from Cape Canaveral to test subsystems [E4]."
+        llm_response_prod = LlmResponse(content=types.Content(role="model", parts=[types.Part(text=raw_production)]))
+        res_p = production_risk_after_model_callback(mock_callback_ctx, llm_response_prod)
+        # res_p is None means unmodified (survives completely intact because E4 is parsed!)
+        self.assertIsNone(res_p)
+
+        # Verdict Exact Live Replay
+        raw_verdict = "CINEVERDICT FINAL EVALUATION\n\n### 1. FINAL VERDICT\nMODIFY\n\n### 2. CONFIDENCE\nHIGH\n\n### 3. DECISIVE REASONS\n* **External Schedule and Timing Uncertainty:** Official and secondary sources establish that the external launch target for Vast Space's Haven-1 has rescheduled to Q1 2027 atop Falcon 9 [E1, E2].\n* Under E5 standard terms, users may download and use media assets for news, educational, and other purposes that do not involve direct commercial exploitation [E5]."
+        llm_response_verdict = LlmResponse(content=types.Content(role="model", parts=[types.Part(text=raw_verdict)]))
+        res_v = verdict_after_model_callback(mock_callback_ctx, llm_response_verdict)
+        # res_v is NOT None because bullet 1 contains unauthorized words (like "Official") and fails closed,
+        # but bullet 2 (standard E5 terms) survives perfectly!
+        self.assertIsNotNone(res_v)
+        modified_verdict = res_v.content.parts[0].text
+        self.assertIn("[Factual proposition unverified due to missing evidence.]", modified_verdict)
+        self.assertIn("Under E5 standard terms, users may download and use media assets for news, educational", modified_verdict)
 
 
 if __name__ == "__main__":

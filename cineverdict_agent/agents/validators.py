@@ -16,6 +16,15 @@ def _trace_log(msg: str):
         sys.stderr.write(f"[CINEVERDICT TRACE][{role}] {msg}\n")
         sys.stderr.flush()
 
+def _trace_raw_callback(role: str, text: str):
+    if os.environ.get("CINEVERDICT_RAW_CALLBACK_TRACE") == "1":
+        sys.stderr.write(f"[CINEVERDICT RAW][{role}] === START RAW CALLBACK ===\n")
+        sys.stderr.write(text)
+        if not text.endswith("\n"):
+            sys.stderr.write("\n")
+        sys.stderr.write(f"[CINEVERDICT RAW][{role}] === END RAW CALLBACK ===\n")
+        sys.stderr.flush()
+
 COMMON_STOP_WORDS = {
     "the", "a", "an", "and", "or", "but", "if", "because", "as", "what", "where", "when", "why", "how",
     "this", "that", "these", "those", "then", "there", "their", "theirs", "they", "them", "he", "she", "it",
@@ -1863,6 +1872,7 @@ def market_after_model_callback(callback_context, llm_response: LlmResponse) -> 
         for part in llm_response.content.parts:
             if part.text:
                 orig = part.text
+                _trace_raw_callback("market_agent", orig)
                 _trace_log(f"[Stage 1] Raw downstream model output:\n{orig}\n")
 
                 text = clean_and_validate_hidden_facts(orig, allowed_words, ctx=ctx)
@@ -1927,6 +1937,7 @@ def production_risk_after_model_callback(
         for part in llm_response.content.parts:
             if part.text:
                 orig = part.text
+                _trace_raw_callback("production_risk_agent", orig)
                 _trace_log(f"[Stage 1] Raw downstream model output:\n{orig}\n")
 
                 text = clean_and_validate_hidden_facts(orig, allowed_words, ctx=ctx)
@@ -1989,6 +2000,7 @@ def verdict_after_model_callback(callback_context, llm_response: LlmResponse) ->
         for part in llm_response.content.parts:
             if part.text:
                 orig = part.text
+                _trace_raw_callback("verdict_agent", orig)
                 _trace_log(f"[Stage 1] Raw downstream model output:\n{orig}\n")
 
                 text = clean_and_validate_hidden_facts(orig, allowed_words, ctx=ctx)

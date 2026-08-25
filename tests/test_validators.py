@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import MagicMock
 from google.adk.models.llm_response import LlmResponse
@@ -2116,6 +2117,162 @@ Supporting Excerpt: "Vast facility in Long Beach"
         modified_verdict = res_v.content.parts[0].text
         self.assertIn("[Factual proposition unverified due to missing evidence.]", modified_verdict)
         self.assertIn("Under E5 standard terms, users may download and use media assets for news, educational", modified_verdict)
+
+
+class TestRawCallbackTrace(unittest.TestCase):
+
+    def setUp(self):
+        self.mock_ctx = MagicMock()
+        self.mock_ctx.session.events = []
+
+        self.mock_callback_ctx = MagicMock(spec=Context)
+        self.mock_callback_ctx.get_invocation_context.return_value = self.mock_ctx
+
+    def test_trace_off_behavior(self):
+        orig_val = os.environ.get("CINEVERDICT_RAW_CALLBACK_TRACE")
+        if "CINEVERDICT_RAW_CALLBACK_TRACE" in os.environ:
+            del os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"]
+
+        try:
+            import io
+            from unittest.mock import patch
+
+            raw_text = "MARKET ANALYSIS\n\nSome raw text here."
+            llm_response = LlmResponse(content=types.Content(role="model", parts=[types.Part(text=raw_text)]))
+
+            with patch('sys.stderr', new_callable=io.StringIO) as mock_stderr:
+                res = market_after_model_callback(self.mock_callback_ctx, llm_response)
+                self.assertNotIn("[CINEVERDICT RAW]", mock_stderr.getvalue())
+        finally:
+            if orig_val is not None:
+                os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"] = orig_val
+
+    def test_trace_on_behavior_market(self):
+        orig_val = os.environ.get("CINEVERDICT_RAW_CALLBACK_TRACE")
+        os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"] = "1"
+        try:
+            import io
+            from unittest.mock import patch
+
+            raw_text = "MARKET ANALYSIS\n\nSome raw text here [E1]."
+            llm_response = LlmResponse(content=types.Content(role="model", parts=[types.Part(text=raw_text)]))
+
+            with patch('sys.stderr', new_callable=io.StringIO) as mock_stderr:
+                res = market_after_model_callback(self.mock_callback_ctx, llm_response)
+
+                output = mock_stderr.getvalue()
+                self.assertIn("[CINEVERDICT RAW][market_agent] === START RAW CALLBACK ===\n", output)
+                self.assertIn(raw_text, output)
+                self.assertIn("[CINEVERDICT RAW][market_agent] === END RAW CALLBACK ===\n", output)
+        finally:
+            if orig_val is not None:
+                os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"] = orig_val
+            else:
+                del os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"]
+
+    def test_trace_on_behavior_production(self):
+        orig_val = os.environ.get("CINEVERDICT_RAW_CALLBACK_TRACE")
+        os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"] = "1"
+        try:
+            import io
+            from unittest.mock import patch
+
+            raw_text = "PRODUCTION & RISK ANALYSIS\n\nUnverified location."
+            llm_response = LlmResponse(content=types.Content(role="model", parts=[types.Part(text=raw_text)]))
+
+            with patch('sys.stderr', new_callable=io.StringIO) as mock_stderr:
+                res = production_risk_after_model_callback(self.mock_callback_ctx, llm_response)
+
+                output = mock_stderr.getvalue()
+                self.assertIn("[CINEVERDICT RAW][production_risk_agent] === START RAW CALLBACK ===\n", output)
+                self.assertIn(raw_text, output)
+                self.assertIn("[CINEVERDICT RAW][production_risk_agent] === END RAW CALLBACK ===\n", output)
+        finally:
+            if orig_val is not None:
+                os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"] = orig_val
+            else:
+                del os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"]
+
+    def test_trace_on_behavior_verdict(self):
+        orig_val = os.environ.get("CINEVERDICT_RAW_CALLBACK_TRACE")
+        os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"] = "1"
+        try:
+            import io
+            from unittest.mock import patch
+
+            raw_text = "CINEVERDICT FINAL EVALUATION\n\nDecisive reasons here."
+            llm_response = LlmResponse(content=types.Content(role="model", parts=[types.Part(text=raw_text)]))
+
+            with patch('sys.stderr', new_callable=io.StringIO) as mock_stderr:
+                res = verdict_after_model_callback(self.mock_callback_ctx, llm_response)
+
+                output = mock_stderr.getvalue()
+                self.assertIn("[CINEVERDICT RAW][verdict_agent] === START RAW CALLBACK ===\n", output)
+                self.assertIn(raw_text, output)
+                self.assertIn("[CINEVERDICT RAW][verdict_agent] === END RAW CALLBACK ===\n", output)
+        finally:
+            if orig_val is not None:
+                os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"] = orig_val
+            else:
+                del os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"]
+
+    def test_ordering_and_preservation(self):
+        orig_val = os.environ.get("CINEVERDICT_RAW_CALLBACK_TRACE")
+        os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"] = "1"
+        try:
+            import io
+            from unittest.mock import patch
+
+            raw_text = "MARKET ANALYSIS\n\nThis is an unauthorized sentence containing UnsupportedCorp and 2030."
+            llm_response = LlmResponse(content=types.Content(role="model", parts=[types.Part(text=raw_text)]))
+
+            with patch('sys.stderr', new_callable=io.StringIO) as mock_stderr:
+                res = market_after_model_callback(self.mock_callback_ctx, llm_response)
+
+                self.assertIsNotNone(res)
+                modified_text = res.content.parts[0].text
+                self.assertIn("[Factual proposition unverified due to missing evidence.]", modified_text)
+
+                output = mock_stderr.getvalue()
+                self.assertIn("[CINEVERDICT RAW][market_agent] === START RAW CALLBACK ===\n", output)
+                self.assertIn(raw_text, output)
+                self.assertNotIn("[Factual proposition unverified", output.split("=== END RAW CALLBACK ===")[0])
+        finally:
+            if orig_val is not None:
+                os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"] = orig_val
+            else:
+                del os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"]
+
+    def test_trace_semantic_equivalence(self):
+        import io
+        from unittest.mock import patch
+
+        raw_text = "MARKET ANALYSIS\n\nThis is an unauthorized sentence containing UnsupportedCorp and 2030."
+
+        orig_val = os.environ.get("CINEVERDICT_RAW_CALLBACK_TRACE")
+        if "CINEVERDICT_RAW_CALLBACK_TRACE" in os.environ:
+            del os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"]
+        try:
+            llm_response_off = LlmResponse(content=types.Content(role="model", parts=[types.Part(text=raw_text)]))
+            res_off = market_after_model_callback(self.mock_callback_ctx, llm_response_off)
+            result_off = res_off.content.parts[0].text if res_off else raw_text
+        finally:
+            if orig_val is not None:
+                os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"] = orig_val
+
+        os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"] = "1"
+        try:
+            llm_response_on = LlmResponse(content=types.Content(role="model", parts=[types.Part(text=raw_text)]))
+            with patch('sys.stderr', new_callable=io.StringIO):
+                res_on = market_after_model_callback(self.mock_callback_ctx, llm_response_on)
+                result_on = res_on.content.parts[0].text if res_on else raw_text
+        finally:
+            if orig_val is not None:
+                os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"] = orig_val
+            else:
+                del os.environ["CINEVERDICT_RAW_CALLBACK_TRACE"]
+
+        self.assertEqual(result_off, result_on)
 
 
 if __name__ == "__main__":

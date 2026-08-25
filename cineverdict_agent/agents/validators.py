@@ -1724,18 +1724,25 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
                 continue
 
             # Dynamic schedule relationship neutralization
-            has_alignment_word = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["align", "alignment", "aligning"])
+            has_alignment_word = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["align", "alignment", "aligning", "aligned", "coordinate", "coordinating", "coordination"])
             has_independence_word = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["independent", "independently", "independence"])
-            has_dependency_word = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["tie", "tying", "tied", "depend", "depends", "dependency", "dependent"])
+            has_dependency_word = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["tie", "tying", "tied", "depend", "depends", "dependency", "dependent", "dictate", "dictates", "govern", "governs", "shape", "shapes", "affect", "affects", "influence", "influences"])
 
-            has_relation_action = has_alignment_word or has_independence_word or has_dependency_word
+            coupling_terms = [
+                "couple", "coupling", "decouple", "decoupling",
+                "sequence", "sequencing", "synchronize", "synchronizing", "synchronization",
+                "accommodate", "accommodates", "accommodating",
+                "conditional", "conditionalize", "flexible", "flexibility",
+                "schedule around", "time around", "scheduled around", "timed around"
+            ]
+            has_coupling_word = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in coupling_terms)
+            has_qual_dep = any(p in s_lower for p in ["potential dependency", "possible dependency", "may depend", "could depend"])
 
-            # Check if this sentence is an action recommendation or a next action
-            is_action_sentence = classify_sentence_role(sentence) == "action" or "action" in s_lower
+            has_relation_action = has_alignment_word or has_independence_word or has_dependency_word or has_coupling_word or has_qual_dep
 
-            if ctx is not None and has_relation_action and is_action_sentence:
-                has_schedule_terms = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["schedule", "timeline", "timelines", "schedules", "delivery", "release", "production", "post-production", "editorial", "documentary", "project", "film"])
-                has_external_terms = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["external", "launch", "milestone", "event", "q1", "2027"])
+            if ctx is not None and has_relation_action:
+                has_schedule_terms = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["schedule", "timeline", "timelines", "schedules", "delivery", "release", "production", "post-production", "editorial", "documentary", "project", "film", "planning"])
+                has_external_terms = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["external", "launch", "milestone", "milestones", "event", "events", "q1", "2026", "2027"])
 
                 if has_schedule_terms and has_external_terms:
                     cited_ids = parse_cited_evidence_ids(sentence)
@@ -1745,7 +1752,7 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
                         is_supported = False
                     if has_independence_word and not is_relationship_supported("independence", cited_ids, ctx):
                         is_supported = False
-                    if has_dependency_word and not is_relationship_supported("dependency", cited_ids, ctx):
+                    if (has_dependency_word or has_coupling_word or has_qual_dep) and not is_relationship_supported("dependency", cited_ids, ctx):
                         is_supported = False
 
                     if not is_supported:
@@ -1757,7 +1764,12 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
                         if m:
                             trailing_ws = m.group(1)
 
-                        sentence = f"{bullet_prefix}Define the project's internal production schedule, budget, and funding without presupposing a dependency, alignment, or independence relationship to the external event, and separately determine whether any such relationship is intended or required.{trailing_ws}"
+                        is_action_sentence = classify_sentence_role(sentence) == "action" or "action" in s_lower or "should" in s_lower or "must" in s_lower or any(s_lower.strip().startswith(v) for v in ["establish", "define", "formulate", "align", "schedule", "create", "structure", "make", "organize", "plan", "coordinate", "build", "tie", "base", "adjust"])
+
+                        if is_action_sentence:
+                            sentence = f"{bullet_prefix}Define the project's internal production schedule, budget, and funding without presupposing a dependency, alignment, or independence relationship to the external event, and separately determine whether any such relationship is intended or required.{trailing_ws}"
+                        else:
+                            sentence = f"{bullet_prefix}The relationship between the internal schedule and the external schedule remains unverified and unknown.{trailing_ws}"
                         processed_sentences.append(sentence)
                         continue
                     else:

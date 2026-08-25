@@ -2316,6 +2316,87 @@ class TestRawCallbackTrace(unittest.TestCase):
 
         self.assertEqual(result_off, result_on)
 
+    def test_m7a20_relationship_safety(self):
+        # Setup mock research ledger containing support for E1 but NOT support for unverified relationship
+        research_ledger = """
+        RESEARCH EVIDENCE BRIEF
+        EVIDENCE LEDGER
+        E1 — Claim: Vast Space updated its Haven-1 launch readiness schedule to the first quarter of 2027.
+        Supporting Excerpt: "Based on the current integration timeline, Vast is updating its schedule for Haven-1 to be ready to launch Q1 2027."
+        """
+
+        mock_ctx = MagicMock()
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = research_ledger
+
+        mock_event_director = MagicMock()
+        mock_event_director.author = "director_agent"
+        mock_event_director.output = "A short documentary about Vast Space's Haven-1."
+
+        mock_event_user = MagicMock()
+        mock_event_user.author = "user"
+        mock_event_user.output = "Evaluate documentary about Vast Space."
+
+        mock_ctx.session.events = [mock_event_research, mock_event_director, mock_event_user]
+
+        # A. Unsupported declarative relationship fails safely
+        text_a = "There is a potential dependency between the documentary's internal production timeline and Haven-1's external schedule."
+        out_a = make_schedule_conditional(text_a, ctx=mock_ctx)
+        self.assertNotIn("potential dependency", out_a.lower())
+        self.assertIn("remains unverified and unknown", out_a)
+
+        # B. Unsupported action coupling fails safely
+        text_b = "Establish a conditional production timeline that remains flexible to accommodate external schedule movements."
+        out_b = make_schedule_conditional(text_b, ctx=mock_ctx)
+        self.assertNotIn("accommodate", out_b.lower())
+        self.assertNotIn("conditional production timeline", out_b.lower())
+        self.assertIn("without presupposing a dependency, alignment, or independence", out_b)
+
+        # C. Qualifier variants do not bypass protection
+        for variant in ["possible dependency", "potential dependency", "may depend", "could depend"]:
+            text_c = f"The documentary timeline {variant} on the external launch milestone."
+            out_c = make_schedule_conditional(text_c, ctx=mock_ctx)
+            self.assertNotIn(variant, out_c.lower())
+            self.assertIn("remains unverified and unknown", out_c)
+
+        # D. Coupling/action variants do not bypass protection
+        for variant in [
+            "conditional on", "accommodate", "schedule around",
+            "sequence around", "synchronize with", "couple to", "decouple from"
+        ]:
+            text_d = f"We should {variant} the internal schedule with the external launch timeline."
+            out_d = make_schedule_conditional(text_d, ctx=mock_ctx)
+            self.assertNotIn(variant, out_d.lower())
+            self.assertIn("without presupposing a dependency", out_d)
+
+        # E. Neutral uncertainty survives
+        text_e = "The relationship between the internal schedule and the external schedule remains unknown."
+        out_e = make_schedule_conditional(text_e, ctx=mock_ctx)
+        self.assertEqual(out_e, text_e)
+
+        # F. Neutral verification action survives
+        text_f = "Determine whether any relationship exists between the internal schedule and the external schedule before incorporating external milestones into production planning."
+        out_f = make_schedule_conditional(text_f, ctx=mock_ctx)
+        self.assertEqual(out_f, text_f)
+
+        # G. A relationship explicitly supported by evidence still survives
+        research_ledger_supported = """
+        RESEARCH EVIDENCE BRIEF
+        EVIDENCE LEDGER
+        E1 — Claim: Vast Space's timeline has a contractual dependency.
+        Supporting Excerpt: "The documentary's internal timeline is contractually tied to and depends on Haven-1's external launch window."
+        """
+        mock_ctx_supp = MagicMock()
+        mock_event_res_supp = MagicMock()
+        mock_event_res_supp.author = "research_agent"
+        mock_event_res_supp.output = research_ledger_supported
+        mock_ctx_supp.session.events = [mock_event_res_supp, mock_event_director, mock_event_user]
+
+        text_g = "The documentary's internal production schedule depends on the external launch schedule [E1]."
+        out_g = make_schedule_conditional(text_g, ctx=mock_ctx_supp)
+        self.assertEqual(out_g, text_g)
+
 
 if __name__ == "__main__":
     unittest.main()

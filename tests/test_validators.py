@@ -1724,6 +1724,48 @@ Supporting Excerpt: "Website terms allow Paramount."
         final_d = fail_closed_on_unsupported_sentences(cleaned_d)
         self.assertEqual(final_d, "- [Factual proposition unverified due to missing evidence.]")
 
+    def test_discourse_markers_and_fail_closed_preface(self):
+        from cineverdict_agent.agents.validators import clean_and_validate_hidden_facts, fail_closed_on_unsupported_sentences
+
+        # Mock Context with research ledger containing E1 supporting Haven-1 and Vast
+        research_ledger = """
+        ### EVIDENCE LEDGER
+        #### E1
+        * **Claim:** Vast is updating the schedule for Haven-1 launch.
+        * **Supporting Excerpt:** "schedule for Haven-1 launch"
+        """
+        mock_ctx = MagicMock()
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = research_ledger
+        mock_ctx.session.events = [mock_event_research]
+
+        # 1. Supported transitional adverbs "Additionally," "Furthermore," "Moreover," survive
+        s1 = "Additionally, Vast is updating the schedule for Haven-1 launch [E1]."
+        res1 = fail_closed_on_unsupported_sentences(clean_and_validate_hidden_facts(s1, set(), ctx=mock_ctx))
+        self.assertEqual(res1, s1)
+
+        s2 = "Furthermore, Vast is updating the schedule [E1]."
+        res2 = fail_closed_on_unsupported_sentences(clean_and_validate_hidden_facts(s2, set(), ctx=mock_ctx))
+        self.assertEqual(res2, s2)
+
+        s3 = "Moreover, Vast is updating the schedule [E1]."
+        res3 = fail_closed_on_unsupported_sentences(clean_and_validate_hidden_facts(s3, set(), ctx=mock_ctx))
+        self.assertEqual(res3, s3)
+
+        # 2. Unsupported leading token/entity/value must fail closed, NOT be erased by Stage 11
+        neg_cases = [
+            ("SpaceX, the project remains unverified.", "[Factual proposition unverified due to missing evidence.]"),
+            ("Seattle, the project remains unverified.", "[Factual proposition unverified due to missing evidence.]"),
+            ("NASA, access remains unknown.", "[Factual proposition unverified due to missing evidence.]"),
+            ("2028, the schedule remains unverified.", "[Factual proposition unverified due to missing evidence.]"),
+            ("UnsupportedCorp, whether access exists remains unknown.", "[Factual proposition unverified due to missing evidence.]")
+        ]
+
+        for case, expected in neg_cases:
+            res_neg = fail_closed_on_unsupported_sentences(clean_and_validate_hidden_facts(case, set(), ctx=mock_ctx))
+            self.assertIn(expected, res_neg)
+
     def test_m7a16_stale_vs_latest_user_text(self):
         from cineverdict_agent.agents.validators import get_user_text
         mock_ctx = MagicMock()

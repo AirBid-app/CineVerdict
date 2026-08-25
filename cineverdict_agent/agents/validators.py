@@ -1385,15 +1385,21 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
 
             _trace_log(f"  [Stage 5] Semantic proposition classification: Sentence: '{sentence.strip()}' -> Role: '{sentence_role}' (Content Role: '{content_role}', Section: '{current_section}')")
 
-            if sentence_role != "factual":
-                sentence_for_extraction = lowercase_sentence_starts(sentence)
-                _trace_log(f"    [Stage 6] Analytical/uncertainty/action handling: Lowercasing sentence start: '{sentence_for_extraction.strip()}'")
-            else:
-                sentence_for_extraction = sentence
-                _trace_log(f"    [Stage 6] Factual handling: Keeping original sentence capitalization: '{sentence_for_extraction.strip()}'")
+            sentence_for_extraction = sentence
+            _trace_log(f"    [Stage 6] Keeping original sentence capitalization: '{sentence_for_extraction.strip()}'")
 
             raw_tokens = re.findall(r"\b[A-Z][a-zA-Z0-9\-]*\b|\b\d+\b", sentence_for_extraction)
             significant_words = set(raw_tokens)
+
+            # Exclude genuine introductory non-substantive discourse markers from significant_words
+            discourse_markers = {"additionally", "furthermore", "moreover"}
+            clean_s = re.sub(r'^(?:-\s*|\*\s*|\d+\.\s*)', '', sentence).strip()
+            first_word_match = re.match(r'^([a-zA-Z]+)\s*,', clean_s)
+            if first_word_match:
+                intro_word = first_word_match.group(1).lower()
+                if intro_word in discourse_markers:
+                    significant_words.discard(first_word_match.group(1))
+
             _trace_log(f"    [Stage 7/8] Extracted tokens: {list(significant_words)}")
 
             unauthorized = []
@@ -1848,42 +1854,30 @@ def fail_closed_on_unsupported_sentences(text: str) -> str:
 
                 preserved = False
 
-                # Drop unsupported sentence-start adverbs (e.g. "Additionally, ", "Furthermore, ")
-                m_intro = re.match(r'^(\s*(?:-\s*|\*\s*|\d+\.\s*)?)(?:\[UNSUPPORTED\]\s*,\s*)([a-zA-Z].*)$', sentence)
-                if m_intro:
-                    prefix = m_intro.group(1)
-                    rest = m_intro.group(2)
-                    if "[UNSUPPORTED]" not in rest:
-                        preserved_sentence = f"{prefix}{rest[0].upper() + rest[1:]}"
-                        _trace_log(f"[Stage 11] Clause-level preservation: Dropped unsupported intro adverb. Before: '{sentence.strip()}' -> After: '{preserved_sentence.strip()}'")
-                        processed_sentences.append(preserved_sentence)
-                        preserved = True
-
                 # M7A.16 Clause-Level Preservation
                 # Split sentence by common conjunctions or punctuation separating factual preface and independent uncertainty
-                if not preserved:
-                    conjunctions = [", but ", ", however, ", "; however, ", ", and ", "; "]
-                    for conj in conjunctions:
-                        if conj in sentence:
-                            parts_clause = sentence.split(conj, 1)
-                            if len(parts_clause) == 2:
-                                left, right = parts_clause
-                                # The left clause contains [UNSUPPORTED], but the right clause has ZERO unsupported words!
-                                if "[UNSUPPORTED]" in left and "[UNSUPPORTED]" not in right:
-                                    right_stripped = right.strip()
-                                    # Verify the right clause is a valid independent epistemic/analytical statement
-                                    starts_with_epistemic = right_stripped.lower().startswith(("whether", "if"))
-                                    has_epistemic_phrase = any(x in right_stripped.lower() for x in ["remains unknown", "unverified", "unresolved", "unspecified", "remains to be verified"])
+                conjunctions = [", but ", ", however, ", "; however, ", ", and ", "; "]
+                for conj in conjunctions:
+                    if conj in sentence:
+                        parts_clause = sentence.split(conj, 1)
+                        if len(parts_clause) == 2:
+                            left, right = parts_clause
+                            # The left clause contains [UNSUPPORTED], but the right clause has ZERO unsupported words!
+                            if "[UNSUPPORTED]" in left and "[UNSUPPORTED]" not in right:
+                                right_stripped = right.strip()
+                                # Verify the right clause is a valid independent epistemic/analytical statement
+                                starts_with_epistemic = right_stripped.lower().startswith(("whether", "if"))
+                                has_epistemic_phrase = any(x in right_stripped.lower() for x in ["remains unknown", "unverified", "unresolved", "unspecified", "remains to be verified"])
 
-                                    if (starts_with_epistemic or has_epistemic_phrase) and len(right_stripped.split()) >= 4:
-                                        valid_clause = right_stripped[0].upper() + right_stripped[1:]
-                                        if not valid_clause.endswith((".", "!", "?")):
-                                            valid_clause += "."
-                                        preserved_sentence = f"{bullet_prefix}{valid_clause}{trailing_ws}"
-                                        _trace_log(f"[Stage 11] Clause-level preservation: Replaced compound sentence with valid clause. Before: '{sentence.strip()}' -> After: '{preserved_sentence.strip()}'")
-                                        processed_sentences.append(preserved_sentence)
-                                        preserved = True
-                                        break
+                                if (starts_with_epistemic or has_epistemic_phrase) and len(right_stripped.split()) >= 4:
+                                    valid_clause = right_stripped[0].upper() + right_stripped[1:]
+                                    if not valid_clause.endswith((".", "!", "?")):
+                                        valid_clause += "."
+                                    preserved_sentence = f"{bullet_prefix}{valid_clause}{trailing_ws}"
+                                    _trace_log(f"[Stage 11] Clause-level preservation: Replaced compound sentence with valid clause. Before: '{sentence.strip()}' -> After: '{preserved_sentence.strip()}'")
+                                    processed_sentences.append(preserved_sentence)
+                                    preserved = True
+                                    break
 
                 if not preserved:
                     neutral_marker = f"{bullet_prefix}[Factual proposition unverified due to missing evidence.]{trailing_ws}"

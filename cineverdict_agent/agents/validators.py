@@ -455,6 +455,24 @@ def split_structural_line(line: str) -> tuple[str, str] | None:
     if m:
         return m.group(1), m.group(2)
 
+    # Match arbitrary bold structural titles e.g. "* **Any Title**: "
+    bold_pattern = re.compile(
+        r"^([ \t]*(?:#+\s*)?(?:-\s*|\*\s*|\+\s*|\d+\s*\.\s*)?\*\*[^\*]+\*\*(?:\s*(?::|—|-)\s*|\s*$))(.*)$",
+        re.IGNORECASE
+    )
+    m_bold = bold_pattern.match(line)
+    if m_bold:
+        return m_bold.group(1), m_bold.group(2)
+
+    # Match Decisive Reason N prefixes
+    dr_pattern = re.compile(
+        r"^([ \t]*(?:#+\s*)?(?:-\s*|\*\s*|\+\s*|\d+\s*\.\s*)?DECISIVE REASON \d+(?:\s*(?::|—|-)\s*|\s*$))(.*)$",
+        re.IGNORECASE
+    )
+    m_dr = dr_pattern.match(line)
+    if m_dr:
+        return m_dr.group(1), m_dr.group(2)
+
     # Fallback to match standalone index headers e.g. "### E1:" or "E1 —" or "E1"
     index_pattern = re.compile(
         r"^([ \t]*(?:#+\s*)?(?:-\s*|\*\s*|\+\s*|\d+\s*\.\s*)?(?:E\d+)(?:\*\*|\])?(?:\s*(?::|—|-)\s*|\s*$))(.*)$",
@@ -1257,74 +1275,6 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
                 active_evidence_scope = None
                 _trace_log(f"  [Evidence Scope Tracking] Active evidence scope cleared (section: {matched_label})")
 
-        # Construct the allowed words set for this line
-        explicit_citations = parse_cited_evidence_ids(line)
-        _trace_log(f"[Stage 3] Citation parsing: Cited IDs on line: {explicit_citations}")
-
-        if ev_map:
-            # We have dynamic evidence mapping
-            effective_cited_ids = None
-            if explicit_citations:
-                effective_cited_ids = explicit_citations
-                _trace_log(f"  [Stage 4] Using explicit line citations: {effective_cited_ids}")
-            elif active_evidence_scope is not None:
-                effective_cited_ids = active_evidence_scope
-                _trace_log(f"  [Stage 4] Inheriting parent evidence scope: {effective_cited_ids}")
-
-            if effective_cited_ids is not None:
-                line_allowed = set()
-                for cid in effective_cited_ids:
-                    excerpts = ev_map.get(cid, [])
-                    _trace_log(f"  [Stage 4] Selected excerpts for {cid}: {excerpts}")
-                    for exc in excerpts:
-                        line_allowed.update(extract_and_normalize_words(exc))
-                    claims = ev_claims_map.get(cid, [])
-                    _trace_log(f"  [Stage 4] Selected claims for {cid}: {claims}")
-                    for clm in claims:
-                        line_allowed.update(extract_and_normalize_words(clm))
-
-                # Add Director Plan words
-                director_text = get_director_text(ctx)
-                if director_text:
-                    words = re.findall(r"[a-zA-Z0-9\-]+", director_text)
-                    for w in words:
-                        line_allowed.add(w.lower())
-                        if "-" in w:
-                            for sub in w.split("-"):
-                                if sub:
-                                    line_allowed.add(sub.lower())
-
-                # Add User content words
-                user_text = get_user_text(ctx)
-                if user_text:
-                    words = re.findall(r"[a-zA-Z0-9\-]+", user_text)
-                    for w in words:
-                        line_allowed.add(w.lower())
-                        if "-" in w:
-                            for sub in w.split("-"):
-                                if sub:
-                                    line_allowed.add(sub.lower())
-
-                # Add system vocabulary & common words
-                for w in SYSTEM_ALLOWED_WORDS:
-                    line_allowed.add(w.lower())
-                for w in COMMON_STOP_WORDS:
-                    line_allowed.add(w.lower())
-                _trace_log(f"  [Stage 4] Custom line-level allowed words constructed. Size: {len(line_allowed)}")
-            else:
-                # No explicit citations and no active_evidence_scope. Fall back to global allowed words.
-                _trace_log(f"  [Stage 4] Falling back to global allowed words.")
-                line_allowed = allowed_words
-        else:
-            _trace_log(f"  [Stage 4] Falling back to global allowed words.")
-            line_allowed = allowed_words
-
-        # Pre-expand allowed words to include all of their conservative variations
-        expanded_allowed = set()
-        for w in line_allowed:
-            for var in get_word_variations(w, expand_mappings=True):
-                expanded_allowed.add(var)
-
         # Split body_part into sentences
         sentence_end = re.compile(r'([.!?]\s+)')
         parts = sentence_end.split(body_part)
@@ -1341,7 +1291,85 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
                 sentences.append(s)
 
         processed_sentences = []
+        label_citations = parse_cited_evidence_ids(label_part) if split_res else []
+
         for sentence in sentences:
+            # Construct the allowed words set for this sentence
+            sentence_citations = parse_cited_evidence_ids(sentence)
+
+            # Combine label citations and sentence citations, preserving order and removing duplicates
+            combined_cits = []
+            for cid in label_citations + sentence_citations:
+                if cid not in combined_cits:
+                    combined_cits.append(cid)
+            explicit_citations = combined_cits
+
+            _trace_log(f"[Stage 3] Citation parsing: Cited IDs on line: {explicit_citations}")
+
+            if ev_map:
+                # We have dynamic evidence mapping
+                effective_cited_ids = None
+                if explicit_citations:
+                    effective_cited_ids = explicit_citations
+                    _trace_log(f"  [Stage 4] Using explicit line citations: {effective_cited_ids}")
+                elif active_evidence_scope is not None:
+                    effective_cited_ids = active_evidence_scope
+                    _trace_log(f"  [Stage 4] Inheriting parent evidence scope: {effective_cited_ids}")
+
+                if effective_cited_ids is not None:
+                    line_allowed = set()
+                    for cid in effective_cited_ids:
+                        excerpts = ev_map.get(cid, [])
+                        _trace_log(f"  [Stage 4] Selected excerpts for {cid}: {excerpts}")
+                        for exc in excerpts:
+                            line_allowed.update(extract_and_normalize_words(exc))
+                        claims = ev_claims_map.get(cid, [])
+                        _trace_log(f"  [Stage 4] Selected claims for {cid}: {claims}")
+                        for clm in claims:
+                            line_allowed.update(extract_and_normalize_words(clm))
+
+                    # Add Director Plan words
+                    director_text = get_director_text(ctx)
+                    if director_text:
+                        words = re.findall(r"[a-zA-Z0-9\-]+", director_text)
+                        for w in words:
+                            line_allowed.add(w.lower())
+                            if "-" in w:
+                                for sub in w.split("-"):
+                                    if sub:
+                                        line_allowed.add(sub.lower())
+
+                    # Add User content words
+                    user_text = get_user_text(ctx)
+                    if user_text:
+                        words = re.findall(r"[a-zA-Z0-9\-]+", user_text)
+                        for w in words:
+                            line_allowed.add(w.lower())
+                            if "-" in w:
+                                for sub in w.split("-"):
+                                    if sub:
+                                        line_allowed.add(sub.lower())
+
+                    # Add system vocabulary & common words
+                    for w in SYSTEM_ALLOWED_WORDS:
+                        line_allowed.add(w.lower())
+                    for w in COMMON_STOP_WORDS:
+                        line_allowed.add(w.lower())
+                    _trace_log(f"  [Stage 4] Custom line-level allowed words constructed. Size: {len(line_allowed)}")
+                else:
+                    # No explicit citations and no active_evidence_scope. Fall back to global allowed words.
+                    _trace_log(f"  [Stage 4] Falling back to global allowed words.")
+                    line_allowed = allowed_words
+            else:
+                _trace_log(f"  [Stage 4] Falling back to global allowed words.")
+                line_allowed = allowed_words
+
+            # Pre-expand allowed words to include all of their conservative variations
+            expanded_allowed = set()
+            for w in line_allowed:
+                for var in get_word_variations(w, expand_mappings=True):
+                    expanded_allowed.add(var)
+
             content_role = classify_sentence_role(sentence)
             sentence_role = content_role
 
@@ -1818,31 +1846,44 @@ def fail_closed_on_unsupported_sentences(text: str) -> str:
                 if m:
                     trailing_ws = m.group(1)
 
+                preserved = False
+
+                # Drop unsupported sentence-start adverbs (e.g. "Additionally, ", "Furthermore, ")
+                m_intro = re.match(r'^(\s*(?:-\s*|\*\s*|\d+\.\s*)?)(?:\[UNSUPPORTED\]\s*,\s*)([a-zA-Z].*)$', sentence)
+                if m_intro:
+                    prefix = m_intro.group(1)
+                    rest = m_intro.group(2)
+                    if "[UNSUPPORTED]" not in rest:
+                        preserved_sentence = f"{prefix}{rest[0].upper() + rest[1:]}"
+                        _trace_log(f"[Stage 11] Clause-level preservation: Dropped unsupported intro adverb. Before: '{sentence.strip()}' -> After: '{preserved_sentence.strip()}'")
+                        processed_sentences.append(preserved_sentence)
+                        preserved = True
+
                 # M7A.16 Clause-Level Preservation
                 # Split sentence by common conjunctions or punctuation separating factual preface and independent uncertainty
-                preserved = False
-                conjunctions = [", but ", ", however, ", "; however, ", ", and ", "; "]
-                for conj in conjunctions:
-                    if conj in sentence:
-                        parts_clause = sentence.split(conj, 1)
-                        if len(parts_clause) == 2:
-                            left, right = parts_clause
-                            # The left clause contains [UNSUPPORTED], but the right clause has ZERO unsupported words!
-                            if "[UNSUPPORTED]" in left and "[UNSUPPORTED]" not in right:
-                                right_stripped = right.strip()
-                                # Verify the right clause is a valid independent epistemic/analytical statement
-                                starts_with_epistemic = right_stripped.lower().startswith(("whether", "if"))
-                                has_epistemic_phrase = any(x in right_stripped.lower() for x in ["remains unknown", "unverified", "unresolved", "unspecified", "remains to be verified"])
+                if not preserved:
+                    conjunctions = [", but ", ", however, ", "; however, ", ", and ", "; "]
+                    for conj in conjunctions:
+                        if conj in sentence:
+                            parts_clause = sentence.split(conj, 1)
+                            if len(parts_clause) == 2:
+                                left, right = parts_clause
+                                # The left clause contains [UNSUPPORTED], but the right clause has ZERO unsupported words!
+                                if "[UNSUPPORTED]" in left and "[UNSUPPORTED]" not in right:
+                                    right_stripped = right.strip()
+                                    # Verify the right clause is a valid independent epistemic/analytical statement
+                                    starts_with_epistemic = right_stripped.lower().startswith(("whether", "if"))
+                                    has_epistemic_phrase = any(x in right_stripped.lower() for x in ["remains unknown", "unverified", "unresolved", "unspecified", "remains to be verified"])
 
-                                if (starts_with_epistemic or has_epistemic_phrase) and len(right_stripped.split()) >= 4:
-                                    valid_clause = right_stripped[0].upper() + right_stripped[1:]
-                                    if not valid_clause.endswith((".", "!", "?")):
-                                        valid_clause += "."
-                                    preserved_sentence = f"{bullet_prefix}{valid_clause}{trailing_ws}"
-                                    _trace_log(f"[Stage 11] Clause-level preservation: Replaced compound sentence with valid clause. Before: '{sentence.strip()}' -> After: '{preserved_sentence.strip()}'")
-                                    processed_sentences.append(preserved_sentence)
-                                    preserved = True
-                                    break
+                                    if (starts_with_epistemic or has_epistemic_phrase) and len(right_stripped.split()) >= 4:
+                                        valid_clause = right_stripped[0].upper() + right_stripped[1:]
+                                        if not valid_clause.endswith((".", "!", "?")):
+                                            valid_clause += "."
+                                        preserved_sentence = f"{bullet_prefix}{valid_clause}{trailing_ws}"
+                                        _trace_log(f"[Stage 11] Clause-level preservation: Replaced compound sentence with valid clause. Before: '{sentence.strip()}' -> After: '{preserved_sentence.strip()}'")
+                                        processed_sentences.append(preserved_sentence)
+                                        preserved = True
+                                        break
 
                 if not preserved:
                     neutral_marker = f"{bullet_prefix}[Factual proposition unverified due to missing evidence.]{trailing_ws}"

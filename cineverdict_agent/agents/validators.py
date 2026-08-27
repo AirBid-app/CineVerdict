@@ -2087,3 +2087,51 @@ def verdict_after_model_callback(callback_context, llm_response: LlmResponse) ->
     finally:
         _trace_log("=== END CALLBACK ===")
         _trace_state.role = "unknown"
+
+
+def verdict_before_model_callback(callback_context, llm_request) -> None:
+    """Callback executed before model call to dynamically bind Verdict to active Research Evidence Ledger."""
+    _trace_state.role = "verdict_agent"
+    _trace_log("=== START BEFORE-MODEL CALLBACK ===")
+    try:
+        ctx = callback_context.get_invocation_context()
+        research_text = get_research_text(ctx)
+
+        valid_ids = []
+        if research_text:
+            ev_map = get_evidence_excerpts_map(research_text)
+            if ev_map:
+                valid_ids = sorted(
+                    list(ev_map.keys()),
+                    key=lambda x: int(re.search(r'\d+', x).group()) if re.search(r'\d+', x) else 0
+                )
+
+        if valid_ids:
+            ids_str = ", ".join(f"E{re.search(r'\d+', x).group()}" for x in valid_ids)
+
+            dynamic_contract = (
+                f"\n\nDYNAMIC EVIDENCE LEDGER BINDING CONTRACT:\n"
+                f"- The Evidence Ledger supplied in THIS execution is the sole factual citation namespace.\n"
+                f"- The active evidence IDs are exactly: {ids_str}.\n"
+                f"- Cite ONLY evidence IDs present in this active ledger. Never cite E# IDs that are absent.\n"
+                f"- Evidence IDs from prior runs, examples, memory, or other executions are invalid.\n"
+                f"- Every factual proposition must cite the specific CURRENT evidence item whose Claim or Supporting Excerpt supports it.\n"
+                f"- Do not cite an ID merely because it existed in another execution.\n"
+                f"- If no current evidence item supports a factual proposition, express it as uncertainty/missing evidence or omit the proposition.\n"
+                f"- Never translate or remap a remembered evidence ID by ordinal position."
+            )
+        else:
+            dynamic_contract = (
+                f"\n\nDYNAMIC EVIDENCE LEDGER BINDING CONTRACT:\n"
+                f"- There is NO active Research Evidence Ledger or no valid evidence IDs present for the current execution.\n"
+                f"- You are STRICTLY prohibited from making any cited factual assertions or citing any E# IDs because no active evidence exists."
+            )
+
+        if not llm_request.config.system_instruction:
+            llm_request.config.system_instruction = dynamic_contract
+        elif isinstance(llm_request.config.system_instruction, str):
+            llm_request.config.system_instruction += dynamic_contract
+        else:
+            _trace_log(f"Unsupported system_instruction type: {type(llm_request.config.system_instruction)}")
+    finally:
+        _trace_state.role = "unknown"

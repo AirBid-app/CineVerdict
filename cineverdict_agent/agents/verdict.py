@@ -2,7 +2,7 @@ from google.adk.agents.llm_agent import Agent
 from google.adk.models import Gemini
 from google.genai import types
 
-from .validators import verdict_after_model_callback
+from .validators import verdict_after_model_callback, verdict_before_model_callback
 
 
 verdict_agent = Agent(
@@ -10,6 +10,7 @@ verdict_agent = Agent(
     name="verdict_agent",
     timeout=120.0,
     output_key="final_verdict",
+    before_model_callback=verdict_before_model_callback,
     after_model_callback=verdict_after_model_callback,
     description="CineVerdict final decision and recommendation agent.",
     instruction="""

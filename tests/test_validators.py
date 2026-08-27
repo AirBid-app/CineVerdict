@@ -2398,5 +2398,110 @@ class TestRawCallbackTrace(unittest.TestCase):
         self.assertEqual(out_g, text_g)
 
 
+class TestVerdictBeforeModelCallback(unittest.TestCase):
+
+    def setUp(self):
+        self.mock_callback_ctx = MagicMock()
+        self.mock_ctx = MagicMock()
+        self.mock_callback_ctx.get_invocation_context.return_value = self.mock_ctx
+
+        self.mock_llm_request = MagicMock()
+        self.mock_llm_request.config = MagicMock()
+        self.mock_llm_request.config.system_instruction = "Base system instruction."
+
+    def test_four_item_ledger(self):
+        research_ledger = """
+        RESEARCH EVIDENCE BRIEF
+        EVIDENCE LEDGER
+        E1 — Claim: Vast Space targeting Q1 2027 launch.
+        Supporting Excerpt: "Based on the current integration timeline, Vast is updating its schedule for Haven-1 to be ready to launch Q1 2027."
+        E2 — Claim: May 2023 target announcement.
+        Supporting Excerpt: "When we launched the Haven-1 program, we set a target of launching no earlier than August 2025."
+        E3 — Claim: Media Assets Terms of Use.
+        Supporting Excerpt: "You may download and use our media assets subject to this website's Terms of Use."
+        E4 — Claim: Website Terms of Use.
+        Supporting Excerpt: "All of the content on the Website is the exclusive property of Vast."
+        """
+
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = research_ledger
+
+        self.mock_ctx.session.events = [mock_event_research]
+
+        from cineverdict_agent.agents.validators import verdict_before_model_callback
+        verdict_before_model_callback(self.mock_callback_ctx, self.mock_llm_request)
+
+        sys_inst = self.mock_llm_request.config.system_instruction
+        self.assertIn("DYNAMIC EVIDENCE LEDGER BINDING CONTRACT", sys_inst)
+        self.assertIn("E1, E2, E3, E4", sys_inst)
+        self.assertNotIn("E5", sys_inst)
+        self.assertNotIn("E9", sys_inst)
+
+    def test_nine_item_ledger(self):
+        research_ledger = "\n".join([f"E{i} — Claim: This is item {i}.\nSupporting Excerpt: \"Supporting fact for {i}.\"" for i in range(1, 10)])
+
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = research_ledger
+
+        self.mock_ctx.session.events = [mock_event_research]
+
+        from cineverdict_agent.agents.validators import verdict_before_model_callback
+        verdict_before_model_callback(self.mock_callback_ctx, self.mock_llm_request)
+
+        sys_inst = self.mock_llm_request.config.system_instruction
+        self.assertIn("DYNAMIC EVIDENCE LEDGER BINDING CONTRACT", sys_inst)
+        self.assertIn("E1, E2, E3, E4, E5, E6, E7, E8, E9", sys_inst)
+
+    def test_empty_or_unreadable_ledger(self):
+        self.mock_ctx.session.events = []
+
+        from cineverdict_agent.agents.validators import verdict_before_model_callback
+        verdict_before_model_callback(self.mock_callback_ctx, self.mock_llm_request)
+
+        sys_inst = self.mock_llm_request.config.system_instruction
+        self.assertIn("DYNAMIC EVIDENCE LEDGER BINDING CONTRACT", sys_inst)
+        self.assertIn("There is NO active Research Evidence Ledger", sys_inst)
+        self.assertIn("STRICTLY prohibited from making any cited factual assertions", sys_inst)
+
+    def test_ledger_numbering_shift(self):
+        ledger_a = """
+        RESEARCH EVIDENCE BRIEF
+        EVIDENCE LEDGER
+        E3 — Claim: May 2023 target announcement.
+        Supporting Excerpt: "When we launched the Haven-1 program, we set a target of launching no earlier than August 2025."
+        """
+        mock_event_a = MagicMock()
+        mock_event_a.author = "research_agent"
+        mock_event_a.output = ledger_a
+
+        self.mock_ctx.session.events = [mock_event_a]
+
+        from cineverdict_agent.agents.validators import verdict_before_model_callback
+        verdict_before_model_callback(self.mock_callback_ctx, self.mock_llm_request)
+        sys_inst_a = self.mock_llm_request.config.system_instruction
+        self.assertIn("E3", sys_inst_a)
+        self.assertNotIn("E2", sys_inst_a)
+
+        ledger_b = """
+        RESEARCH EVIDENCE BRIEF
+        EVIDENCE LEDGER
+        E2 — Claim: May 2023 target announcement.
+        Supporting Excerpt: "When we launched the Haven-1 program, we set a target of launching no earlier than August 2025."
+        """
+        mock_event_b = MagicMock()
+        mock_event_b.author = "research_agent"
+        mock_event_b.output = ledger_b
+
+        self.mock_ctx.session.events = [mock_event_b]
+        self.mock_llm_request.config.system_instruction = "Base system instruction."
+
+        verdict_before_model_callback(self.mock_callback_ctx, self.mock_llm_request)
+        sys_inst_b = self.mock_llm_request.config.system_instruction
+        self.assertIn("E2", sys_inst_b)
+        self.assertNotIn("E3", sys_inst_b)
+
+
 if __name__ == "__main__":
     unittest.main()

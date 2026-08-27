@@ -176,7 +176,7 @@ def get_normalized_sentence_for_classification(sentence: str) -> str:
         orig = s
 
         # 1. Strip Markdown bullet markers or numbered list markers
-        s = re.sub(r'^([ \t]*(?:-\s*|\*\s*|\+\s*|\d+\s*\.\s*))', '', s, flags=re.IGNORECASE)
+        s = re.sub(r'^([ \t]*(?:-\s*|\*\s*|\+\s*|\d+\s*\.\s*|[IVXLCDM]+\s*\.\s*))', '', s, flags=re.IGNORECASE)
 
         # 2. Strip bold/markdown wrappers at start of prefix area
         s = re.sub(r'^([ \t]*\*\*|\*)', '', s)
@@ -448,7 +448,7 @@ def split_structural_line(line: str) -> tuple[str, str] | None:
     # Match structural headers like: "### 1. FINAL VERDICT" or "- **ANALYSIS**:" or "MISSING EVIDENCE:" or "E1 — Claim:"
     # Also matches labels followed by optional bracketed citation/explanatory suffixes
     pattern = re.compile(
-        r"^([ \t]*(?:#+\s*)?(?:-\s*|\*\s*|\+\s*|\d+\s*\.\s*)?(?:\*\*|\[)?(?:E\d+\s*(?:—|-)\s*)?(?:" + labels_pattern + r")(?:\s*\[[^\]]+\])?(?:\*\*|\])?(?:\s*(?::|—|-)\s*|\s*$))(.*)$",
+        r"^([ \t]*(?:#+\s*)?(?:-\s*|\*\s*|\+\s*|\d+\s*\.\s*|[IVXLCDM]+\s*\.\s*)?(?:\*\*|\[)?(?:E\d+\s*(?:—|-)\s*)?(?:" + labels_pattern + r")(?:\s*\[[^\]]+\])?(?:\*\*|\])?(?:\s*(?::|—|-)\s*|\s*$))(.*)$",
         re.IGNORECASE
     )
     m = pattern.match(line)
@@ -457,7 +457,7 @@ def split_structural_line(line: str) -> tuple[str, str] | None:
 
     # Match arbitrary bold structural titles e.g. "* **Any Title**: "
     bold_pattern = re.compile(
-        r"^([ \t]*(?:#+\s*)?(?:-\s*|\*\s*|\+\s*|\d+\s*\.\s*)?\*\*[^\*]+\*\*(?:\s*(?::|—|-)\s*|\s*$))(.*)$",
+        r"^([ \t]*(?:#+\s*)?(?:-\s*|\*\s*|\+\s*|\d+\s*\.\s*|[IVXLCDM]+\s*\.\s*)?\*\*[^\*]+\*\*(?:\s*(?::|—|-)\s*|\s*$))(.*)$",
         re.IGNORECASE
     )
     m_bold = bold_pattern.match(line)
@@ -466,7 +466,7 @@ def split_structural_line(line: str) -> tuple[str, str] | None:
 
     # Match Decisive Reason N prefixes
     dr_pattern = re.compile(
-        r"^([ \t]*(?:#+\s*)?(?:-\s*|\*\s*|\+\s*|\d+\s*\.\s*)?DECISIVE REASON \d+(?:\s*(?::|—|-)\s*|\s*$))(.*)$",
+        r"^([ \t]*(?:#+\s*)?(?:-\s*|\*\s*|\+\s*|\d+\s*\.\s*|[IVXLCDM]+\s*\.\s*)?DECISIVE REASON \d+(?:\s*(?::|—|-)\s*|\s*$))(.*)$",
         re.IGNORECASE
     )
     m_dr = dr_pattern.match(line)
@@ -475,7 +475,7 @@ def split_structural_line(line: str) -> tuple[str, str] | None:
 
     # Fallback to match standalone index headers e.g. "### E1:" or "E1 —" or "E1"
     index_pattern = re.compile(
-        r"^([ \t]*(?:#+\s*)?(?:-\s*|\*\s*|\+\s*|\d+\s*\.\s*)?(?:E\d+)(?:\*\*|\])?(?:\s*(?::|—|-)\s*|\s*$))(.*)$",
+        r"^([ \t]*(?:#+\s*)?(?:-\s*|\*\s*|\+\s*|\d+\s*\.\s*|[IVXLCDM]+\s*\.\s*)?(?:E\d+)(?:\*\*|\])?(?:\s*(?::|—|-)\s*|\s*$))(.*)$",
         re.IGNORECASE
     )
     m2 = index_pattern.match(line)
@@ -1610,7 +1610,7 @@ def is_relationship_supported(relationship_type: str, cited_ids: list[str], ctx)
     elif relationship_type == "alignment":
         words_to_check = ["align", "alignment", "aligned", "must align", "coordinate"]
     elif relationship_type == "independence":
-        words_to_check = ["independent", "independently", "independence"]
+        words_to_check = ["independent", "independently", "independence", "unrelated", "decoupled"]
 
     for cid in cited_ids:
         excerpts = ev_map.get(cid, [])
@@ -1720,12 +1720,20 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
 
             # Skip if sentence is already neutralized/conditionalized to prevent double neutralization
             if "without presupposing" in s_lower or s_lower.strip().startswith("whether") or "remains unverified" in s_lower or "remains unknown" in s_lower or "remains to be verified" in s_lower:
-                processed_sentences.append(sentence)
-                continue
+                if s_lower.strip().startswith("whether") or "without presupposing" in s_lower:
+                    processed_sentences.append(sentence)
+                    continue
+                # Do not skip if it contains a relationship assertion that needs validation
+                has_alignment_word = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["align", "alignment", "aligning", "aligned", "coordinate", "coordinating", "coordination"])
+                has_independence_word = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["independent", "independently", "independence", "unrelated", "decoupled"])
+                has_dependency_word = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["tie", "tying", "tied", "depend", "depends", "dependency", "dependent", "dictate", "dictates", "govern", "governs", "shape", "shapes", "affect", "affects", "influence", "influences"])
+                if not (has_alignment_word or has_independence_word or has_dependency_word):
+                    processed_sentences.append(sentence)
+                    continue
 
             # Dynamic schedule relationship neutralization
             has_alignment_word = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["align", "alignment", "aligning", "aligned", "coordinate", "coordinating", "coordination"])
-            has_independence_word = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["independent", "independently", "independence"])
+            has_independence_word = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["independent", "independently", "independence", "unrelated", "decoupled"])
             has_dependency_word = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["tie", "tying", "tied", "depend", "depends", "dependency", "dependent", "dictate", "dictates", "govern", "governs", "shape", "shapes", "affect", "affects", "influence", "influences"])
 
             coupling_terms = [
@@ -1892,7 +1900,7 @@ def fail_closed_on_unsupported_sentences(text: str) -> str:
                                     break
 
                 if not preserved:
-                    neutral_marker = f"{bullet_prefix}[Factual proposition unverified due to missing evidence.]{trailing_ws}"
+                    neutral_marker = f"{bullet_prefix}Evidence is insufficient to verify this factual proposition.{trailing_ws}"
                     _trace_log(f"[Stage 11] Sentence-level fail-closed replacement: Sentence containing '[UNSUPPORTED]' replaced. Before: '{sentence.strip()}' -> After: '{neutral_marker.strip()}'")
                     processed_sentences.append(neutral_marker)
             else:

@@ -124,7 +124,7 @@ class TestValidators(unittest.TestCase):
         self.assertIsNotNone(res)
         modified_text = res.content.parts[0].text
         # Houston is redacted, and since it contains [UNSUPPORTED], the entire sentence fails closed
-        self.assertIn("Factual proposition unverified due to missing evidence.", modified_text)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", modified_text)
         self.assertNotIn("Houston", modified_text)
         self.assertIn("existing/distributed", modified_text)
 
@@ -143,7 +143,7 @@ class TestValidators(unittest.TestCase):
         self.assertIsNotNone(res_prod)
         modified_text_prod = res_prod.content.parts[0].text
         # Mojave is redacted, so the sentence fails closed
-        self.assertIn("Factual proposition unverified due to missing evidence.", modified_text_prod)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", modified_text_prod)
         self.assertNotIn("Mojave", modified_text_prod)
 
         # Test verdict callback
@@ -220,12 +220,12 @@ class TestValidators(unittest.TestCase):
 
         # Completely replaces sentence with neutral marker
         input_text = "We have two locations. One is in Long Beach. The other is at [UNSUPPORTED] [UNSUPPORTED]."
-        expected = "We have two locations. One is in Long Beach. [Factual proposition unverified due to missing evidence.]"
+        expected = "We have two locations. One is in Long Beach. Evidence is insufficient to verify this factual proposition."
         self.assertEqual(fail_closed_on_unsupported_sentences(input_text), expected)
 
         # Preserves bullet points and list formatting
         list_input = "- We checked the [UNSUPPORTED] location."
-        list_expected = "- [Factual proposition unverified due to missing evidence.]"
+        list_expected = "- Evidence is insufficient to verify this factual proposition."
         self.assertEqual(fail_closed_on_unsupported_sentences(list_input), list_expected)
 
     def test_evidence_strength_protection(self):
@@ -355,12 +355,12 @@ class TestValidators(unittest.TestCase):
         out_d_raw = clean_and_validate_hidden_facts("Secret Space has its headquarters in Seattle.", set())
         from cineverdict_agent.agents.validators import fail_closed_on_unsupported_sentences
         out_d = fail_closed_on_unsupported_sentences(out_d_raw)
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_d)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out_d)
 
         # E. An analytical wrapper cannot preserve a material unsupported factual assertion.
         out_e_raw = clean_and_validate_hidden_facts("The production should evaluate alternative approaches if Secret Space is unavailable.", set())
         out_e = fail_closed_on_unsupported_sentences(out_e_raw)
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_e)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out_e)
 
         # F. Unknown audience demand is not converted into a positive assumption.
         from cineverdict_agent.agents.validators import neutralize_positive_assumptions
@@ -415,26 +415,26 @@ class TestValidators(unittest.TestCase):
         # 5. Unsupported factual assertion still fails closed.
         out_5_raw = clean_and_validate_hidden_facts("Orbital Media Corporation secured exclusive access in 2027.", set())
         out_5 = fail_closed_on_unsupported_sentences(out_5_raw)
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_5)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out_5)
 
         # 6. Unsupported proper noun inside analytical language still fails closed.
         out_6_raw = clean_and_validate_hidden_facts("Evaluation of custom licensing needs for the Paramount footage remains unverified.", set())
         out_6 = fail_closed_on_unsupported_sentences(out_6_raw)
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_6)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out_6)
 
         # 7. Unsupported number/date inside action language still fails closed.
         out_7_raw = clean_and_validate_hidden_facts("Determine whether the 42 crew members can be supported.", set())
         out_7 = fail_closed_on_unsupported_sentences(out_7_raw)
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_7)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out_7)
 
         # 8. Analytical prefix cannot launder unsupported factual material.
         out_8_raw = clean_and_validate_hidden_facts("Analysis shows that the facility supports 14 production crews.", set())
         out_8 = fail_closed_on_unsupported_sentences(out_8_raw)
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_8)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out_8)
 
         out_8b_raw = clean_and_validate_hidden_facts("Verify the confirmed $25 million agreement.", set())
         out_8b = fail_closed_on_unsupported_sentences(out_8b_raw)
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_8b)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out_8b)
 
         # 9. Unknown audience remains unknown.
         out_9 = neutralize_positive_assumptions("It is assumed that a viable audience exists.")
@@ -488,7 +488,7 @@ class TestValidators(unittest.TestCase):
 
         # 18. Sentence-level fail-closed remains intact.
         out_18 = fail_closed_on_unsupported_sentences("This has [UNSUPPORTED] word.")
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_18)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out_18)
 
     def test_decision_trace(self):
         import io
@@ -672,7 +672,7 @@ class TestValidators(unittest.TestCase):
         line_num = "Determine whether the 42 crew members can be supported."
         out_num_raw = clean_and_validate_hidden_facts(line_num, set(), ctx=mock_ctx)
         out_num = fail_closed_on_unsupported_sentences(out_num_raw)
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_num)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out_num)
 
         # J. Generic verification action survives
         line_generic = "Verify the applicable access conditions before commitment."
@@ -689,7 +689,7 @@ class TestValidators(unittest.TestCase):
 
         # L. Sentence fail-closed remains intact
         out_fail = fail_closed_on_unsupported_sentences("Seattle is [UNSUPPORTED].")
-        self.assertEqual(out_fail, "[Factual proposition unverified due to missing evidence.]")
+        self.assertEqual(out_fail, "Evidence is insufficient to verify this factual proposition.")
 
         # M. Structural headings remain intact
         out_heading = clean_and_validate_hidden_facts("### 3. DECISIVE REASONS", set(), ctx=mock_ctx)
@@ -845,7 +845,7 @@ class TestValidators(unittest.TestCase):
         out_mixed = clean_and_validate_hidden_facts(test_mixed, set(), ctx=mock_ctx)
         out_mixed_fail = fail_closed_on_unsupported_sentences(out_mixed)
         self.assertIn("compliance", out_mixed_fail)
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_mixed_fail)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out_mixed_fail)
 
         # 17. Decisive Reason factual+analytical shape survives.
         test_decisive = "* [E1] Vast Space has official authorization. Because compliance is unresolved, next steps are unspecified."
@@ -865,7 +865,7 @@ class TestValidators(unittest.TestCase):
         self.assertIn("Verify whether the proposed use satisfies the applicable terms.", out_actions_fail)
         self.assertIn("Determine whether additional authorization is required.", out_actions_fail)
         self.assertIn("Confirm which location, if any, is relevant", out_actions_fail)
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_actions_fail)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out_actions_fail)
 
         # 22. Structural headings remain intact.
         self.assertEqual(clean_and_validate_hidden_facts("### REQUIRED NEXT ACTIONS", set(), ctx=mock_ctx), "### REQUIRED NEXT ACTIONS")
@@ -899,7 +899,7 @@ class TestValidators(unittest.TestCase):
         mock_callback_context.get_invocation_context.return_value = mock_ctx
 
         # 28. M7A.2 sentence fail-closed remains intact.
-        self.assertEqual(fail_closed_on_unsupported_sentences("Factual statement with [UNSUPPORTED] word."), "[Factual proposition unverified due to missing evidence.]")
+        self.assertEqual(fail_closed_on_unsupported_sentences("Factual statement with [UNSUPPORTED] word."), "Evidence is insufficient to verify this factual proposition.")
 
     def test_m7a9_regression_and_fixtures(self):
         import io
@@ -1057,7 +1057,7 @@ class TestValidators(unittest.TestCase):
         # 5. Market unsupported fact fails (Negative Control)
         market_input_5 = "### VERIFIED EVIDENCE\n\nVERIFIED EVIDENCE [E1]: Vast Space has its primary facility located in Paris, France."
         out = run_callback(market_after_model_callback, market_input_5)
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out)
 
         # 6. Production grounded evidence survives
         prod_input_1 = "### VERIFIED EVIDENCE\n\nVERIFIED EVIDENCE [E2]: The commercial space station Haven-1 is planned to launch no earlier than 2026."
@@ -1078,12 +1078,12 @@ class TestValidators(unittest.TestCase):
         prod_input_4 = "### MISSING EVIDENCE\n\nMISSING EVIDENCE: Coordination with the subject company for Mojave facility access."
         out = run_callback(production_risk_after_model_callback, prod_input_4)
         # Mojave is ungrounded proper noun, so that sentence fails closed, but Coordination is authorized and doesn't fail on its own
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out)
 
         # 10. Production unsupported fact fails (Negative Control)
         prod_input_5 = "### ASSUMPTION\n\nASSUMPTION: Funding of $25 million was secured yesterday."
         out = run_callback(production_risk_after_model_callback, prod_input_5)
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out)
 
         # 11. Verdict Decisive Reason grounded+analytical survives
         verdict_input_1 = "### DECISIVE REASONS\n\n1. [E1] Vast Space facility in Long Beach is verified; however, the production's internal schedule remains unspecified."
@@ -1136,7 +1136,7 @@ class TestValidators(unittest.TestCase):
         # Note: Non-neutralizable verbs/structures fail closed
         verdict_input_10 = "- Secure the Acme database."
         out = run_callback(verdict_after_model_callback, verdict_input_10)
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out)
 
         # 21. Structural numbering does not become factual number
         out_num = run_callback(verdict_after_model_callback, "10. Determine whether the external schedule is stable.")
@@ -1146,15 +1146,15 @@ class TestValidators(unittest.TestCase):
         # 22. Genuine unsupported number remains blocked (Negative Control)
         # Note: 1234567 is length > 1, not allowed, must fail
         out_gen_num = run_callback(verdict_after_model_callback, "The budget is $1234567.")
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_gen_num)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out_gen_num)
 
         # 23. Genuine unsupported date remains blocked (Negative Control)
         out_gen_date = run_callback(verdict_after_model_callback, "The launch is scheduled for June 2029.")
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_gen_date)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out_gen_date)
 
         # 24. Genuine unsupported proper noun remains blocked (Negative Control)
         out_gen_pn = run_callback(verdict_after_model_callback, "Acme Corporation has granted access.")
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_gen_pn)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out_gen_pn)
 
         # 25. Unknown-vs-assumption protection remains (epistemic uncertainty is allowed)
         # "Funding remains unknown." is a valid uncertainty statement and does not assert a specific value
@@ -1164,7 +1164,7 @@ class TestValidators(unittest.TestCase):
         # 26. External/internal schedule closure remains
         # Negative Control: asserting definite internal schedule without evidence fails
         out_sched_assertion = run_callback(production_risk_after_model_callback, "### VERIFIED EVIDENCE\n\nVERIFIED EVIDENCE [E1]: The production schedule starts in December 2027.")
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out_sched_assertion)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out_sched_assertion)
 
         # 27. Evidence-map parsing remains
         split_res = split_structural_line("### E1")
@@ -1181,7 +1181,7 @@ class TestValidators(unittest.TestCase):
         self.assertIsNotNone(run_callback(production_risk_after_model_callback, "### ASSUMPTION\n\nASSUMPTION: We have access via Acme."))
 
         # 30. M7A.2 sentence fail-closed remains
-        self.assertEqual(fail_closed_on_unsupported_sentences("Factual statement with [UNSUPPORTED] word."), "[Factual proposition unverified due to missing evidence.]")
+        self.assertEqual(fail_closed_on_unsupported_sentences("Factual statement with [UNSUPPORTED] word."), "Evidence is insufficient to verify this factual proposition.")
 
         # 31. M7A.6 trace remains OFF by default
         old_trace = os.environ.get("CINEVERDICT_VALIDATOR_TRACE")
@@ -1377,51 +1377,51 @@ class TestValidators(unittest.TestCase):
 
         # 1. Ungrounded company/entity factual claim fails
         out = run_market("### VERIFIED EVIDENCE\n\nVERIFIED EVIDENCE [E1]: Acme Corporation has its facility in Long Beach.")
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out)
 
         # 2. Ungrounded location factual claim fails
         out = run_market("### VERIFIED EVIDENCE\n\nVERIFIED EVIDENCE [E1]: Vast Space has its facility in Seattle.")
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out)
 
         # 3. Ungrounded factual number fails
         out = run_market("### VERIFIED EVIDENCE\n\nVERIFIED EVIDENCE [E1]: Vast Space has 42 facilities in Long Beach.")
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out)
 
         # 4. Ungrounded factual date fails
         out = run_market("### VERIFIED EVIDENCE\n\nVERIFIED EVIDENCE [E1]: Vast Space primary facility in Long Beach opened in 2029.")
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out)
 
         # 5. Unsupported budget value fails
         out = run_verdict("### DECISIVE REASONS\n\n1. The budget is $25 million.")
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out)
 
         # 6. Unsupported audience-size value fails
         out = run_market("### ANALYSIS\n\nWe estimated an audience of 1000000 viewers.")
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out)
 
         # 7. Unsupported access-granted claim fails
         out = run_production("### VERIFIED EVIDENCE\n\nAccess was granted by SpaceX.")
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out)
 
         # 8. Unsupported permission-granted claim fails
         out = run_production("### VERIFIED EVIDENCE\n\nFAA granted permission.")
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out)
 
         # 9. Unsupported schedule claim fails
         out = run_production("### VERIFIED EVIDENCE\n\nThe internal filming schedule is confirmed for December 2027.")
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out)
 
         # 10. Unsupported positive audience-demand claim fails
         out = run_market("### VERIFIED EVIDENCE\n\nAudience demand is high.")
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out)
 
         # 11. Unsupported factual sentence inside an action does not gain authority merely from REQUIRED NEXT ACTIONS context
         out = run_verdict("### REQUIRED NEXT ACTIONS\n\nVerify that SpaceX granted the contract.")
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out)
 
         # 12. Unsupported factual sentence inside an uncertainty section does not gain authority merely from UNRESOLVED UNCERTAINTIES context
         out = run_verdict("### UNRESOLVED UNCERTAINTIES\n\nWhether SpaceX will launch Haven-1.")
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", out)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out)
 
         # 13. Unsupported claim of schedule independence fails or neutralizes when independence is not evidenced
         out = run_production("### ASSUMPTION\n\n- The internal schedule is independent of the external schedule.")
@@ -1708,21 +1708,21 @@ Supporting Excerpt: "Website terms allow Paramount."
         # UnsupportedCorp is ungrounded proper noun -> gets redacted to [UNSUPPORTED] -> right side has [UNSUPPORTED] -> fails closed
         cleaned_b = clean_and_validate_hidden_facts(line_b, set(), ctx=mock_ctx)
         final_b = fail_closed_on_unsupported_sentences(cleaned_b)
-        self.assertEqual(final_b, "- [Factual proposition unverified due to missing evidence.]")
+        self.assertEqual(final_b, "- Evidence is insufficient to verify this factual proposition.")
 
         # Case C: Factual prefix fails, and right clause contains ungrounded number/date -> FAIL CLOSED!
         line_c = "- Vast will launch on January 5, 2035 [E1], but whether launch occurs in 2028 remains unknown."
         # 2028 is ungrounded -> redacted -> fails closed
         cleaned_c = clean_and_validate_hidden_facts(line_c, set(), ctx=mock_ctx)
         final_c = fail_closed_on_unsupported_sentences(cleaned_c)
-        self.assertEqual(final_c, "- [Factual proposition unverified due to missing evidence.]")
+        self.assertEqual(final_c, "- Evidence is insufficient to verify this factual proposition.")
 
         # Case D: Factual prefix fails, and right clause contains both ungrounded entity and date -> FAIL CLOSED!
         line_d = "- Vast will launch on January 5, 2035 [E1], but whether UnsupportedCorp launches in 2028 remains unknown."
         # both redacted -> fails closed
         cleaned_d = clean_and_validate_hidden_facts(line_d, set(), ctx=mock_ctx)
         final_d = fail_closed_on_unsupported_sentences(cleaned_d)
-        self.assertEqual(final_d, "- [Factual proposition unverified due to missing evidence.]")
+        self.assertEqual(final_d, "- Evidence is insufficient to verify this factual proposition.")
 
     def test_discourse_markers_and_fail_closed_preface(self):
         from cineverdict_agent.agents.validators import clean_and_validate_hidden_facts, fail_closed_on_unsupported_sentences
@@ -1755,11 +1755,11 @@ Supporting Excerpt: "Website terms allow Paramount."
 
         # 2. Unsupported leading token/entity/value must fail closed, NOT be erased by Stage 11
         neg_cases = [
-            ("SpaceX, the project remains unverified.", "[Factual proposition unverified due to missing evidence.]"),
-            ("Seattle, the project remains unverified.", "[Factual proposition unverified due to missing evidence.]"),
-            ("NASA, access remains unknown.", "[Factual proposition unverified due to missing evidence.]"),
-            ("2028, the schedule remains unverified.", "[Factual proposition unverified due to missing evidence.]"),
-            ("UnsupportedCorp, whether access exists remains unknown.", "[Factual proposition unverified due to missing evidence.]")
+            ("SpaceX, the project remains unverified.", "Evidence is insufficient to verify this factual proposition."),
+            ("Seattle, the project remains unverified.", "Evidence is insufficient to verify this factual proposition."),
+            ("NASA, access remains unknown.", "Evidence is insufficient to verify this factual proposition."),
+            ("2028, the schedule remains unverified.", "Evidence is insufficient to verify this factual proposition."),
+            ("UnsupportedCorp, whether access exists remains unknown.", "Evidence is insufficient to verify this factual proposition.")
         ]
 
         for case, expected in neg_cases:
@@ -1875,7 +1875,7 @@ Supporting Excerpt: "Website terms allow Paramount."
 
         final_bullet = fail_closed_on_unsupported_sentences(cleaned_bullet)
         # Sentence 1 fails closed, but Sentence 2 survives intact and remains highly readable!
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", final_bullet)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", final_bullet)
         self.assertIn(sentence_uncertainty, final_bullet)
 
         # 3. UNKNOWN relationship Strategic Action is neutralized to the domain-general shape
@@ -2157,7 +2157,7 @@ Supporting Excerpt: "Vast facility in Long Beach"
         # but bullet 2 (standard E5 terms) survives perfectly!
         self.assertIsNotNone(res_v)
         modified_verdict = res_v.content.parts[0].text
-        self.assertIn("[Factual proposition unverified due to missing evidence.]", modified_verdict)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", modified_verdict)
         self.assertIn("Under E5 standard terms, users may download and use media assets for news, educational", modified_verdict)
 
 
@@ -2273,7 +2273,7 @@ class TestRawCallbackTrace(unittest.TestCase):
 
                 self.assertIsNotNone(res)
                 modified_text = res.content.parts[0].text
-                self.assertIn("[Factual proposition unverified due to missing evidence.]", modified_text)
+                self.assertIn("Evidence is insufficient to verify this factual proposition.", modified_text)
 
                 output = mock_stderr.getvalue()
                 self.assertIn("[CINEVERDICT RAW][market_agent] === START RAW CALLBACK ===\n", output)
@@ -2505,3 +2505,47 @@ class TestVerdictBeforeModelCallback(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestM7A23(unittest.TestCase):
+    def test_m7a23_independence_safety_closure(self):
+        ctx = type('MockContext', (), {'session': None, 'user_content': None})()
+
+        text1 = "The scheduling relationship between Haven-1's external milestones and the documentary's internal schedule is unverified and remains unknown; these timelines must be treated as independent."
+        res1 = make_schedule_conditional(text1, ctx=ctx)
+        self.assertNotIn("must be treated as independent", res1)
+
+        text2 = "The relationship remains unknown, but the internal and external schedules are independent."
+        res2 = make_schedule_conditional(text2, ctx=ctx)
+        self.assertNotIn("schedules are independent", res2)
+
+        text3 = "The relationship remains unknown. The external and internal schedules are unrelated."
+        res3 = make_schedule_conditional(text3, ctx=ctx)
+        self.assertNotIn("schedules are unrelated", res3)
+
+        text4 = "The schedule relationship to the external event remains unknown; there is no dependency."
+        res4 = make_schedule_conditional(text4, ctx=ctx)
+        self.assertNotIn("no dependency", res4)
+
+        text5 = "The relationship remains unknown, so the external and internal schedules are decoupled."
+        res5 = make_schedule_conditional(text5, ctx=ctx)
+        self.assertNotIn("decoupled", res5)
+
+    def test_m7a23_neutral_verification_survives(self):
+        ctx = type('MockContext', (), {'session': None, 'user_content': None})()
+        text7 = "Determine whether the schedules are dependent, aligned, or independent."
+        res7 = make_schedule_conditional(text7, ctx=ctx)
+        self.assertEqual(res7, text7)
+
+    def test_m7a23_supported_independence_survives(self):
+        class MockEvent:
+            author = "research_agent"
+            output = "### E1\nSupporting Excerpt: The external event is completely independent of our schedule."
+            content = None
+        class MockSession:
+            events = [MockEvent()]
+        ctx = type('MockContext', (), {'session': MockSession(), 'user_content': None})()
+
+        text8 = "The schedules are independent [E1]."
+        res8 = make_schedule_conditional(text8, ctx=ctx)
+        self.assertEqual(res8, text8)

@@ -1482,17 +1482,32 @@ def neutralize_audience_assumptions(text: str) -> str:
     }
 
     sorted_keys = sorted(mappings.keys(), key=len, reverse=True)
-    placeholders = {}
-    for i, pattern in enumerate(sorted_keys):
-        placeholder = f"___AUD_PLACEHOLDER_{i}___"
-        text, count = re.subn(pattern, placeholder, text, flags=re.IGNORECASE)
-        if count > 0:
-            placeholders[placeholder] = mappings[pattern]
 
-    for placeholder, final_val in placeholders.items():
-        text = text.replace(placeholder, final_val)
-
-    return text
+    sentence_end = re.compile(r'([.!?]\s+)')
+    parts = sentence_end.split(text)
+    processed = []
+    i = 0
+    while i < len(parts):
+        s = parts[i]
+        if i + 1 < len(parts):
+            s += parts[i+1]
+            i += 2
+        else:
+            i += 1
+        if s:
+            if is_analytical_or_uncertainty_line(s):
+                processed.append(s)
+            else:
+                placeholders = {}
+                for idx, pattern in enumerate(sorted_keys):
+                    placeholder = f"___AUD_PLACEHOLDER_{idx}___"
+                    s, count = re.subn(pattern, placeholder, s, flags=re.IGNORECASE)
+                    if count > 0:
+                        placeholders[placeholder] = mappings[pattern]
+                for placeholder, final_val in placeholders.items():
+                    s = s.replace(placeholder, final_val)
+                processed.append(s)
+    return "".join(processed)
 
 
 def neutralize_production_assumptions(text: str) -> str:
@@ -1510,17 +1525,32 @@ def neutralize_production_assumptions(text: str) -> str:
     }
 
     sorted_keys = sorted(mappings.keys(), key=len, reverse=True)
-    placeholders = {}
-    for i, pattern in enumerate(sorted_keys):
-        placeholder = f"___PROD_PLACEHOLDER_{i}___"
-        text, count = re.subn(pattern, placeholder, text, flags=re.IGNORECASE)
-        if count > 0:
-            placeholders[placeholder] = mappings[pattern]
 
-    for placeholder, final_val in placeholders.items():
-        text = text.replace(placeholder, final_val)
-
-    return text
+    sentence_end = re.compile(r'([.!?]\s+)')
+    parts = sentence_end.split(text)
+    processed = []
+    i = 0
+    while i < len(parts):
+        s = parts[i]
+        if i + 1 < len(parts):
+            s += parts[i+1]
+            i += 2
+        else:
+            i += 1
+        if s:
+            if is_analytical_or_uncertainty_line(s):
+                processed.append(s)
+            else:
+                placeholders = {}
+                for idx, pattern in enumerate(sorted_keys):
+                    placeholder = f"___PROD_PLACEHOLDER_{idx}___"
+                    s, count = re.subn(pattern, placeholder, s, flags=re.IGNORECASE)
+                    if count > 0:
+                        placeholders[placeholder] = mappings[pattern]
+                for placeholder, final_val in placeholders.items():
+                    s = s.replace(placeholder, final_val)
+                processed.append(s)
+    return "".join(processed)
 
 
 def neutralize_evaluative_words(text: str, allowed_words: set[str]) -> str:
@@ -1542,7 +1572,8 @@ def neutralize_evaluative_words(text: str, allowed_words: set[str]) -> str:
     sorted_keys = sorted(evaluative_mappings.keys(), key=len, reverse=True)
     placeholders = {}
     for i, pattern in enumerate(sorted_keys):
-        raw_words = re.findall(r"[a-z]+", pattern.lower())
+        clean_pattern = pattern.replace(r"\b", "")
+        raw_words = re.findall(r"[a-z]+", clean_pattern.lower())
         if all(w in allowed_words for w in raw_words):
             continue
 
@@ -1764,7 +1795,7 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
                         is_supported = False
 
                     if not is_supported:
-                        bullet_match = re.match(r'^(\s*(?:-\s*|\*\s*|\d+\.\s*))', sentence)
+                        bullet_match = re.match(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', sentence)
                         bullet_prefix = bullet_match.group(1) if bullet_match else ""
 
                         trailing_ws = ""
@@ -1863,7 +1894,7 @@ def fail_closed_on_unsupported_sentences(text: str) -> str:
         for sentence in sentences:
             if "[UNSUPPORTED]" in sentence:
                 # Capture list markers or indentation to preserve layout structure
-                bullet_match = re.match(r'^(\s*(?:-\s*|\*\s*|\d+\.\s*))', sentence)
+                bullet_match = re.match(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', sentence)
                 bullet_prefix = bullet_match.group(1) if bullet_match else ""
 
                 # Check for trailing whitespace/newlines
@@ -1889,7 +1920,17 @@ def fail_closed_on_unsupported_sentences(text: str) -> str:
                                 starts_with_epistemic = right_stripped.lower().startswith(("whether", "if"))
                                 has_epistemic_phrase = any(x in right_stripped.lower() for x in ["remains unknown", "unverified", "unresolved", "unspecified", "remains to be verified"])
 
-                                if (starts_with_epistemic or has_epistemic_phrase) and len(right_stripped.split()) >= 4:
+                                has_citation = bool(re.search(r'\[E\d+\]', right_stripped, re.IGNORECASE))
+                                starts_with_action = right_stripped.lower().startswith(("define", "verify", "determine", "evaluate", "assess", "confirm", "investigate"))
+                                is_valid_right = (
+                                    starts_with_epistemic
+                                    or has_epistemic_phrase
+                                    or has_citation
+                                    or starts_with_action
+                                    or len(right_stripped.split()) >= 4
+                                )
+
+                                if is_valid_right and len(right_stripped.split()) >= 3:
                                     valid_clause = right_stripped[0].upper() + right_stripped[1:]
                                     if not valid_clause.endswith((".", "!", "?")):
                                         valid_clause += "."
@@ -1905,6 +1946,36 @@ def fail_closed_on_unsupported_sentences(text: str) -> str:
                     processed_sentences.append(neutral_marker)
             else:
                 processed_sentences.append(sentence)
+
+        # Ensure redundant generic failure messages are dropped if they came from structural headers/titles
+        # and there's an independently valid sentence in the same line.
+        has_valid_preserved = any(
+            s.strip() and
+            "[UNSUPPORTED]" not in s and
+            "Evidence is insufficient to verify" not in s
+            for s in processed_sentences
+        )
+
+        if has_valid_preserved:
+            bullet_to_preserve = ""
+            new_processed = []
+            for idx, s in enumerate(processed_sentences):
+                orig_sentence = sentences[idx]
+                # We only drop the "Evidence is insufficient..." marker if the original sentence was a structural title/header
+                if "Evidence is insufficient to verify" in s and "**" in orig_sentence:
+                    if not bullet_to_preserve:
+                        bullet_match = re.match(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', s)
+                        if bullet_match:
+                            bullet_to_preserve = bullet_match.group(1)
+                else:
+                    new_processed.append(s)
+
+            if bullet_to_preserve and new_processed:
+                first_s = new_processed[0]
+                first_s_clean = re.sub(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', '', first_s)
+                new_processed[0] = bullet_to_preserve + first_s_clean
+
+            processed_sentences = new_processed
 
         processed_lines.append("".join(processed_sentences))
 

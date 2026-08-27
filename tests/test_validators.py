@@ -2549,3 +2549,155 @@ class TestM7A23(unittest.TestCase):
         text8 = "The schedules are independent [E1]."
         res8 = make_schedule_conditional(text8, ctx=ctx)
         self.assertEqual(res8, text8)
+
+
+class TestM7A24(unittest.TestCase):
+    def setUp(self):
+        from unittest.mock import MagicMock
+        self.mock_ctx = MagicMock()
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = """
+        ### E1
+        - **Supporting Excerpt**:
+        > "Vast Space has official authorization."
+
+        ### E2
+        - **Supporting Excerpt**:
+        > "The launch campaign begins in autumn 2026."
+
+        ### E3
+        - **Supporting Excerpt**:
+        > "Tours are offered to successful graduate candidates at headquarters."
+        """
+        self.mock_ctx.session.events = [mock_event_research]
+
+    def test_unsupported_factual_clause_plus_valid_uncertainty_clause(self):
+        # A. Left clause is unsupported, right clause is valid uncertainty
+        from cineverdict_agent.agents.validators import clean_and_validate_hidden_facts, fail_closed_on_unsupported_sentences, get_allowed_words
+        allowed = get_allowed_words(self.mock_ctx)
+
+        # 'Acme' is unauthorized and becomes [UNSUPPORTED]
+        text = "Vast Space has granted full permission to the crew on-site at Acme [E1], but whether the production's intended use satisfies standard terms remains unresolved."
+        cleaned = clean_and_validate_hidden_facts(text, allowed, ctx=self.mock_ctx)
+        out = fail_closed_on_unsupported_sentences(cleaned)
+
+        # Left clause fails closed (is removed), right clause survives and remains readable
+        self.assertNotIn("Acme", out)
+        self.assertNotIn("Evidence is insufficient to verify this factual proposition.", out)
+        self.assertIn("Whether the production's intended use satisfies standard terms remains unresolved.", out)
+
+    def test_unsupported_factual_clause_plus_supported_cited_clause(self):
+        # B. Left clause is unsupported, right clause is valid supported cited clause
+        from cineverdict_agent.agents.validators import clean_and_validate_hidden_facts, fail_closed_on_unsupported_sentences, get_allowed_words
+        allowed = get_allowed_words(self.mock_ctx)
+
+        text = "Vast Space has granted full permission to the crew on-site at Acme [E1], but the launch campaign begins in autumn 2026 [E2]."
+        cleaned = clean_and_validate_hidden_facts(text, allowed, ctx=self.mock_ctx)
+        out = fail_closed_on_unsupported_sentences(cleaned)
+
+        # Left clause is stripped/neutralized, right cited clause survives with its citation
+        self.assertNotIn("Acme", out)
+        self.assertNotIn("Evidence is insufficient to verify", out)
+        self.assertIn("The launch campaign begins in autumn 2026 [E2].", out)
+
+    def test_entirely_unsupported_factual_proposition(self):
+        # C. Entirely unsupported factual proposition
+        from cineverdict_agent.agents.validators import clean_and_validate_hidden_facts, fail_closed_on_unsupported_sentences, get_allowed_words
+        allowed = get_allowed_words(self.mock_ctx)
+
+        text = "We have established production filming access at Acme headquarters [E1]."
+        cleaned = clean_and_validate_hidden_facts(text, allowed, ctx=self.mock_ctx)
+        out = fail_closed_on_unsupported_sentences(cleaned)
+
+        # Fails closed to safe, readable output
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out)
+
+    def test_valid_analytical_statement(self):
+        # D. Valid analytical statement survives without failure prefix
+        from cineverdict_agent.agents.validators import clean_and_validate_hidden_facts, fail_closed_on_unsupported_sentences, get_allowed_words
+        allowed = get_allowed_words(self.mock_ctx)
+
+        text = "ASSUMPTION: Commercial feasibility and audience demand remain unverified."
+        cleaned = clean_and_validate_hidden_facts(text, allowed, ctx=self.mock_ctx)
+        out = fail_closed_on_unsupported_sentences(cleaned)
+
+        self.assertEqual(out, text)
+        self.assertNotIn("Evidence is insufficient to verify", out)
+
+    def test_valid_missing_input_statement(self):
+        # E. Valid missing-input statement survives without failure prefix
+        from cineverdict_agent.agents.validators import clean_and_validate_hidden_facts, fail_closed_on_unsupported_sentences, get_allowed_words
+        allowed = get_allowed_words(self.mock_ctx)
+
+        text = "MISSING EVIDENCE: The budget/funding status was not supplied."
+        cleaned = clean_and_validate_hidden_facts(text, allowed, ctx=self.mock_ctx)
+        out = fail_closed_on_unsupported_sentences(cleaned)
+
+        self.assertEqual(out, text)
+        self.assertNotIn("Evidence is insufficient to verify", out)
+
+    def test_correctly_cited_factual_proposition(self):
+        # F. Correctly cited factual proposition survives
+        from cineverdict_agent.agents.validators import clean_and_validate_hidden_facts, fail_closed_on_unsupported_sentences, get_allowed_words
+        allowed = get_allowed_words(self.mock_ctx)
+
+        text = "Vast Space has official authorization [E1]."
+        cleaned = clean_and_validate_hidden_facts(text, allowed, ctx=self.mock_ctx)
+        out = fail_closed_on_unsupported_sentences(cleaned)
+
+        self.assertEqual(out, text)
+
+    def test_wrong_existing_citation_fails_closed(self):
+        # G. Factual claim cited to wrong existing citation fails closed
+        from cineverdict_agent.agents.validators import clean_and_validate_hidden_facts, fail_closed_on_unsupported_sentences, get_allowed_words
+        allowed = get_allowed_words(self.mock_ctx)
+
+        # 'autumn 2026' is in E2, but the sentence cites E1
+        text = "The launch campaign begins in autumn 2026 [E1]."
+        cleaned = clean_and_validate_hidden_facts(text, allowed, ctx=self.mock_ctx)
+        out = fail_closed_on_unsupported_sentences(cleaned)
+
+        self.assertIn("Evidence is insufficient to verify", out)
+
+    def test_nonexistent_citation_fails_closed(self):
+        # H. Nonexistent citation fails closed
+        from cineverdict_agent.agents.validators import clean_and_validate_hidden_facts, fail_closed_on_unsupported_sentences, get_allowed_words
+        allowed = get_allowed_words(self.mock_ctx)
+
+        text = "Vast Space has official authorization [E9]."
+        cleaned = clean_and_validate_hidden_facts(text, allowed, ctx=self.mock_ctx)
+        out = fail_closed_on_unsupported_sentences(cleaned)
+
+        self.assertIn("Evidence is insufficient to verify", out)
+
+    def test_word_level_corruption_regression(self):
+        # I. Word-level corruption regression: validator must not create corrupt hybrids
+        # Check successful graduates
+        from cineverdict_agent.agents.validators import clean_and_validate_hidden_facts, fail_closed_on_unsupported_sentences, neutralize_evaluative_words, get_allowed_words
+        allowed = get_allowed_words(self.mock_ctx)
+
+        text = "Tours are offered to successful graduate candidates [E3]."
+        # 'successful' should survive and NOT be replaced with 'existing/distributed'
+        # because it is supported by E3 claim/excerpt!
+        out = neutralize_evaluative_words(text, allowed)
+        self.assertIn("successful", out)
+        self.assertNotIn("existing/distributed", out)
+
+        # Check physical access
+        from cineverdict_agent.agents.validators import neutralize_production_assumptions
+        text_access = "Physical access to facilities remains unverified and not established."
+        # This uncertainty sentence must remain completely unchanged, avoiding "Physical unverified access"
+        out_access = neutralize_production_assumptions(text_access)
+        self.assertEqual(out_access, text_access)
+
+    def test_structural_markdown_reconstruction(self):
+        # J. Balanced bold/action label remains balanced after validation
+        from cineverdict_agent.agents.validators import make_schedule_conditional
+        text = "**STRATEGIC ACTION [based on E1]**: Align the timelines with the external launch."
+        out = make_schedule_conditional(text, ctx=self.mock_ctx)
+
+        # Ensures that delimiters are balanced and 'STRATEGIC ACTION' is still properly bolded and separated
+        self.assertIn("**STRATEGIC ACTION [based on E1]**", out)
+        self.assertNotIn(":*Define", out)
+        self.assertIn("Define the project's internal", out)

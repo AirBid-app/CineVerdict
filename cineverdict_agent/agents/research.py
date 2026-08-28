@@ -3,6 +3,7 @@ from google.adk.models import Gemini
 from google.genai import types
 
 from ..tools.parallel_search import parallel_search
+from .validators import research_after_model_callback
 
 
 research_agent = Agent(
@@ -10,6 +11,7 @@ research_agent = Agent(
     name="research_agent",
     timeout=180.0,
     output_key="research_evidence",
+    after_model_callback=research_after_model_callback,
     description="CineVerdict research agent and authoritative factual evidence layer.",
     tools=[parallel_search],
     instruction="""

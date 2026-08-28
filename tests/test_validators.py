@@ -160,7 +160,7 @@ class TestValidators(unittest.TestCase):
         res_verdict = verdict_after_model_callback(mock_callback_ctx, llm_response_verdict)
         self.assertIsNotNone(res_verdict)
         modified_text_verdict = res_verdict.content.parts[0].text
-        self.assertIn("determine whether/how it affects the production's release timeline", modified_text_verdict)
+        self.assertIn("Define the project's internal production schedule", modified_text_verdict)
         # Long Beach should NOT be redacted because it is allowed (present in research excerpt)
         self.assertIn("Long Beach", modified_text_verdict)
         self.assertNotIn("[UNSUPPORTED]", modified_text_verdict)
@@ -845,7 +845,7 @@ class TestValidators(unittest.TestCase):
         out_mixed = clean_and_validate_hidden_facts(test_mixed, set(), ctx=mock_ctx)
         out_mixed_fail = fail_closed_on_unsupported_sentences(out_mixed)
         self.assertIn("compliance", out_mixed_fail)
-        self.assertIn("Evidence is insufficient to verify this factual proposition.", out_mixed_fail)
+        self.assertNotIn("Evidence is insufficient to verify this factual proposition.", out_mixed_fail)
 
         # 17. Decisive Reason factual+analytical shape survives.
         test_decisive = "* [E1] Vast Space has official authorization. Because compliance is unresolved, next steps are unspecified."
@@ -1874,8 +1874,8 @@ Supporting Excerpt: "Website terms allow Paramount."
         self.assertIn("[UNSUPPORTED]", cleaned_bullet)
 
         final_bullet = fail_closed_on_unsupported_sentences(cleaned_bullet)
-        # Sentence 1 fails closed, but Sentence 2 survives intact and remains highly readable!
-        self.assertIn("Evidence is insufficient to verify this factual proposition.", final_bullet)
+        # Sentence 1 fails closed (is removed as redundant fail-closed prefix), but Sentence 2 survives intact and remains highly readable!
+        self.assertNotIn("Evidence is insufficient to verify this factual proposition.", final_bullet)
         self.assertIn(sentence_uncertainty, final_bullet)
 
         # 3. UNKNOWN relationship Strategic Action is neutralized to the domain-general shape
@@ -2701,3 +2701,132 @@ class TestM7A24(unittest.TestCase):
         self.assertIn("**STRATEGIC ACTION [based on E1]**", out)
         self.assertNotIn(":*Define", out)
         self.assertIn("Define the project's internal", out)
+
+    def test_m7a25_clause_integrity_and_fail_closed_residue_closure(self):
+        # M7A.25 Final Clause-Integrity & Fail-Closed Residue Closure Tests
+        from unittest.mock import MagicMock
+        from cineverdict_agent.agents.validators import (
+            clean_and_validate_hidden_facts,
+            fail_closed_on_unsupported_sentences,
+            make_schedule_conditional,
+            get_allowed_words
+        )
+
+        # Setup mock context with rich inputs supporting our target words
+        mock_ctx = MagicMock()
+        mock_event_research = MagicMock()
+        mock_event_research.author = "research_agent"
+        mock_event_research.output = """
+        ### EVIDENCE LEDGER
+        #### E1
+        * **Claim:** E1 states the current launch target is Q1 2027, Vast Space has official authorization, and we must define the project's format and establish its distribution strategy.
+        * **Supporting Excerpt:** "The current launch target is Q1 2027, Vast Space has official authorization, and we must define the project's format and establish its distribution strategy."
+
+        #### E2
+        * **Claim:** The launch campaign begins in autumn 2026.
+        * **Supporting Excerpt:** "The launch campaign begins in autumn 2026."
+        """
+
+        mock_event_director = MagicMock()
+        mock_event_director.author = "director_agent"
+        mock_event_director.output = "A short documentary about Vast Space's Haven-1."
+
+        mock_event_user = MagicMock()
+        mock_event_user.author = "user"
+        mock_event_user.output = "Evaluate documentary about Vast Space."
+
+        mock_ctx.session.events = [mock_event_research, mock_event_director, mock_event_user]
+
+        allowed = get_allowed_words(mock_ctx)
+
+        # A. Unsupported clause + supported cited clause -> supported clause survives without redundant failure prefix
+        text_a = "Vast Space has granted full permission to the crew on-site at Acme [E1], but the launch campaign begins in autumn 2026 [E2]."
+        cleaned_a = clean_and_validate_hidden_facts(text_a, allowed, ctx=mock_ctx)
+        out_a = fail_closed_on_unsupported_sentences(cleaned_a)
+        self.assertNotIn("Acme", out_a)
+        self.assertNotIn("Evidence is insufficient", out_a)
+        self.assertIn("The launch campaign begins in autumn 2026 [E2].", out_a)
+
+        # B. Supported cited clause + unsupported clause + valid uncertainty -> supported clause and uncertainty survive; no redundant generic prefix
+        text_b = "Vast Space has official authorization [E1]. But they have also granted full permission to the crew on-site at Acme [E1]. Because the project's budget/funding status was not supplied, it remains unresolved whether the intended documentary satisfies these standard terms."
+        cleaned_b = clean_and_validate_hidden_facts(text_b, allowed, ctx=mock_ctx)
+        out_b = fail_closed_on_unsupported_sentences(cleaned_b)
+        self.assertNotIn("Acme", out_b)
+        self.assertNotIn("Evidence is insufficient", out_b)
+        self.assertIn("Vast Space has official authorization [E1].", out_b)
+        self.assertIn("remains unresolved whether", out_b)
+
+        # C. Placeholder-only bullet -> removed completely
+        text_c = "* [Factual proposition unverified due to missing evidence.]"
+        out_c = fail_closed_on_unsupported_sentences(text_c)
+        self.assertEqual(out_c.strip(), "")
+
+        # D. Incomplete factual fragment: "Currently to Q1 2027 [E1]." -> does not survive
+        text_d = "* Vast Space has granted full permission to the crew on-site at Acme [E1], and currently to Q1 2027 [E1]."
+        cleaned_d = clean_and_validate_hidden_facts(text_d, allowed, ctx=mock_ctx)
+        out_d = fail_closed_on_unsupported_sentences(cleaned_d)
+        self.assertNotIn("Currently to", out_d)
+
+        # E. Complete equivalent: "The current launch target is Q1 2027 [E1]." -> survives
+        text_e = "* Vast Space has granted full permission to the crew on-site at Acme [E1], but the current launch target is Q1 2027 [E1]."
+        cleaned_e = clean_and_validate_hidden_facts(text_e, allowed, ctx=mock_ctx)
+        out_e = fail_closed_on_unsupported_sentences(cleaned_e)
+        self.assertNotIn("Acme", out_e)
+        self.assertIn("The current launch target is Q1 2027 [E1].", out_e)
+
+        # F. Incomplete action: "Format, and establish its distribution strategy." -> does not survive
+        text_f = "- Define the project's format, and establish its distribution strategy."
+        cleaned_f = clean_and_validate_hidden_facts(text_f, allowed, ctx=mock_ctx)
+        out_f = fail_closed_on_unsupported_sentences(cleaned_f)
+        self.assertNotIn("Format, and establish", out_f)
+
+        # G. Complete action: "Define the project's format and establish its distribution strategy." -> survives
+        text_g = "- Define the project's format and establish its distribution strategy."
+        cleaned_g = clean_and_validate_hidden_facts(text_g, allowed, ctx=mock_ctx)
+        out_g = fail_closed_on_unsupported_sentences(cleaned_g)
+        self.assertEqual(out_g, text_g)
+
+        # H. Leading conjunction fragment -> fails safely
+        text_h = "Vast Space has granted full permission to the crew on-site at Acme [E1], and because the evidence [E2]."
+        cleaned_h = clean_and_validate_hidden_facts(text_h, allowed, ctx=mock_ctx)
+        out_h = fail_closed_on_unsupported_sentences(cleaned_h)
+        self.assertIn("Evidence is insufficient to verify", out_h)
+
+        # I. Entirely unsupported factual proposition -> still fails closed
+        text_i = "We have established production filming access at Acme headquarters [E1]."
+        cleaned_i = clean_and_validate_hidden_facts(text_i, allowed, ctx=mock_ctx)
+        out_i = fail_closed_on_unsupported_sentences(cleaned_i)
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", out_i)
+
+        # J. Wrong current citation -> fails closed
+        text_j = "The launch campaign begins in autumn 2026 [E1]."
+        cleaned_j = clean_and_validate_hidden_facts(text_j, allowed, ctx=mock_ctx)
+        out_j = fail_closed_on_unsupported_sentences(cleaned_j)
+        self.assertIn("Evidence is insufficient", out_j)
+
+        # K. Nonexistent citation -> fails closed
+        text_k = "Vast Space has official authorization [E9]."
+        cleaned_k = clean_and_validate_hidden_facts(text_k, allowed, ctx=mock_ctx)
+        out_k = fail_closed_on_unsupported_sentences(cleaned_k)
+        self.assertIn("Evidence is insufficient", out_k)
+
+        # L. Correct current citation -> survives
+        text_l = "Vast Space has official authorization [E1]."
+        cleaned_l = clean_and_validate_hidden_facts(text_l, allowed, ctx=mock_ctx)
+        out_l = fail_closed_on_unsupported_sentences(cleaned_l)
+        self.assertEqual(out_l, text_l)
+
+        # U. Unsupported "external schedule directly influences internal production schedule/risk" must neutralize unless evidence establishes that relationship
+        text_u = "This timeline adjustment directly influences production schedule risk."
+        out_u = make_schedule_conditional(text_u, ctx=mock_ctx)
+        self.assertIn("The relationship between the internal schedule and the external schedule remains unverified and unknown.", out_u)
+
+        # V. Neutral "external schedule has changed over time" survives
+        text_v = "The external schedule has changed over time."
+        out_v = make_schedule_conditional(text_v, ctx=mock_ctx)
+        self.assertEqual(out_v, text_v)
+
+        # W. Neutral "determine whether those changes matter to production planning" survives
+        text_w = "Determine whether those changes matter to production planning."
+        out_w = make_schedule_conditional(text_w, ctx=mock_ctx)
+        self.assertEqual(out_w, text_w)

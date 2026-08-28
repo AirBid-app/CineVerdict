@@ -1403,6 +1403,11 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: set[str], ctx=None
             _trace_log(f"    [Stage 7/8] Extracted tokens: {list(significant_words)}")
 
             unauthorized = []
+            if ev_map and explicit_citations:
+                nonexistent_cits = [cid for cid in explicit_citations if cid not in ev_map]
+                if nonexistent_cits:
+                    unauthorized.append(nonexistent_cits[0])
+
             for w in significant_words:
                 w_lower = w.lower()
 
@@ -1637,7 +1642,7 @@ def is_relationship_supported(relationship_type: str, cited_ids: list[str], ctx)
 
     words_to_check = []
     if relationship_type == "dependency":
-        words_to_check = ["dependent", "depends", "dependency", "contractually tied", "tied", "dictated"]
+        words_to_check = ["dependent", "depends", "dependency", "contractually tied", "tied", "dictated", "influence", "influences", "impact", "impacts", "shape", "shapes", "affect", "affects"]
     elif relationship_type == "alignment":
         words_to_check = ["align", "alignment", "aligned", "must align", "coordinate"]
     elif relationship_type == "independence":
@@ -1674,8 +1679,8 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
     }
 
     # 2. Advanced conditionalization mappings for schedule dependency creation
-    internal_sched = r"(?:internal|documentary's|project's|film's|production|post-production|filming|delivery|release|marketing|festival|distribution|project|delivery's|documentary|film|proposed)(?:,\s*(?:internal|documentary's|project's|film's|production|post-production|filming|delivery|release|marketing|festival|distribution|project|documentary|film|proposed)|,\s*and\s+(?:internal|documentary's|project's|film's|production|post-production|filming|delivery|release|marketing|festival|distribution|project|documentary|film|proposed)|\s+and\s+(?:internal|documentary's|project's|film's|production|post-production|filming|delivery|release|marketing|festival|distribution|project|documentary|film|proposed)|\s+(?:internal|documentary's|project's|film's|production|post-production|filming|delivery|release|marketing|festival|distribution|project|documentary|film|proposed))*\s+(?:schedule|timeline|planning|plan|schedules|timelines|window|windows|date|dates|activities|activity|focus)"
-    external_timing = r"(?:external|launch|conflicting|subject's|third-party|industry|subject|company's|campaign|timing)\s+(?:[\w\-]+\s+)?(?:date|dates|schedule|timeline|timing|event|events|uncertainty|uncertainties|launch\s+date|launch\s+schedule|launch\s+uncertainty|campaign\s+schedule|campaign\s+timeline|campaign|adjustments?|delays?|changes?|slips?|movements?|history|history\s+of\s+timing\s+adjustments|historical\s+schedule\s+changes|timing\s+adjustments)"
+    internal_sched = r"(?:internal|documentary's|project's|film's|production|post-production|filming|delivery|release|marketing|festival|distribution|project|delivery's|documentary|film|proposed)(?:,\s*(?:internal|documentary's|project's|film's|production|post-production|filming|delivery|release|marketing|festival|distribution|project|documentary|film|proposed)|,\s*and\s+(?:internal|documentary's|project's|film's|production|post-production|filming|delivery|release|marketing|festival|distribution|project|documentary|film|proposed)|\s+and\s+(?:internal|documentary's|project's|film's|production|post-production|filming|delivery|release|marketing|festival|distribution|project|documentary|film|proposed)|\s+(?:internal|documentary's|project's|film's|production|post-production|filming|delivery|release|marketing|festival|distribution|project|documentary|film|proposed))*\s+(?:schedule|timeline|planning|plan|schedules|timelines|window|windows|date|dates|activities|activity|focus|risk|risks)"
+    external_timing = r"(?:external|launch|conflicting|subject's|third-party|industry|subject|company's|campaign|timing|timeline)\s+(?:[\w\-]+\s+)?(?:date|dates|schedule|timeline|timing|event|events|uncertainty|uncertainties|launch\s+date|launch\s+schedule|launch\s+uncertainty|campaign\s+schedule|campaign\s+timeline|campaign|adjustments?|delays?|changes?|slips?|movements?|history|history\s+of\s+timing\s+adjustments|historical\s+schedule\s+changes|timing\s+adjustments)"
 
     advanced_mappings = {
         # Pattern: formulate/make/define internal schedule conditionally or independently of external timing
@@ -1691,7 +1696,7 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
             r"whether the \1 depends on the \2 remains unverified; verify the external schedule and determine whether/how it ___TEMP_AFFECTS___ the \1",
 
         # Pattern: external timing impacts/dictates/determines/governs internal schedule
-        rf"\b({external_timing})\s+(?:impacts|impact|dictates|dictate|determines|determine|governs|govern|shapes|shape|affects|affect)\s+(?:the\s+)?(?:any\s+)?(?:proposed\s+)?({internal_sched})\b":
+        rf"\b({external_timing})\s+(?:[\w\-]+\s+)?(?:impacts|impact|dictates|dictate|determines|determine|governs|govern|shapes|shape|affects|affect|influences|influence)\s+(?:the\s+)?(?:any\s+)?(?:proposed\s+)?({internal_sched})\b":
             r"\1 is an external event; determine whether/how it ___TEMP_AFFECTS___ the \2",
 
         # Pattern: build/structure/plan internal schedule around external timing/uncertainty
@@ -1781,7 +1786,7 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
 
             if ctx is not None and has_relation_action:
                 has_schedule_terms = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["schedule", "timeline", "timelines", "schedules", "delivery", "release", "production", "post-production", "editorial", "documentary", "project", "film", "planning"])
-                has_external_terms = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["external", "launch", "milestone", "milestones", "event", "events", "q1", "2026", "2027"])
+                has_external_terms = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["external", "launch", "milestone", "milestones", "event", "events", "q1", "2026", "2027", "timeline", "timelines", "adjustment", "adjustments"])
 
                 if has_schedule_terms and has_external_terms:
                     cited_ids = parse_cited_evidence_ids(sentence)
@@ -1863,16 +1868,92 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
     return "\n".join(processed_lines)
 
 
+def is_clause_grammatically_complete(clause_text: str, sentence: str) -> bool:
+    role = classify_sentence_role(sentence)
+    clause_clean = clause_text.strip().strip(",;").strip()
+    words = [w.lower() for w in re.findall(r"\b[a-zA-Z]+\b", clause_clean)]
+    if not words:
+        return False
+
+    first_word = words[0]
+
+    # 1. Check disallowed leading words for any clause (including coordinating/subordinating conjunctions and leading prepositions/adverbs)
+    disallowed_starters = {
+        "currently", "subsequently", "while", "because", "due", "moving", "to",
+        "and", "but", "or", "since", "although", "if", "for", "with", "at",
+        "from", "by", "under", "above", "below", "consequently"
+    }
+    if first_word in disallowed_starters:
+        return False
+
+    # 2. Check role-specific constraints
+    if role == "action":
+        action_verbs = {
+            "define", "verify", "determine", "evaluate", "assess", "confirm", "investigate",
+            "establish", "formulate", "schedule", "plan", "obtain", "coordinate", "align",
+            "track", "clarify", "ensure", "analyze", "identify", "explore", "mitigate",
+            "address", "check", "review", "compare"
+        }
+        if first_word not in action_verbs:
+            return False
+    else:
+        # Factual, uncertainty, analytical_assumption, etc.
+        # Must contain at least one valid finite verb
+        factual_verbs = {
+            "is", "are", "was", "were", "has", "have", "had", "been",
+            "remains", "remain", "represents", "represent", "establishes", "establish",
+            "contains", "contain", "prohibits", "prohibit", "restricts", "restrict",
+            "begins", "begin", "aims", "aim", "delays", "delayed", "launches", "launched",
+            "completed", "completes", "dictates", "dictate", "impacts", "impact",
+            "shapes", "shape", "affects", "affect", "exists", "exist", "satisfies", "satisfy",
+            "permits", "permit", "allows", "allow", "imposes", "impose"
+        }
+        has_verb = any(w in factual_verbs for w in words)
+        if not has_verb:
+            return False
+
+    return True
+
+
+def is_uncertainty_or_cited_sentence(s: str) -> bool:
+    s_lower = s.lower()
+    # Check for citation
+    if re.search(r'\[based on e\d+|\[e\d+', s_lower):
+        return True
+    # Check for uncertainty or action keywords
+    uncertainty_keywords = {
+        "remains unknown", "unverified", "unresolved", "unspecified", "remains to be verified",
+        "whether", "if", "determine", "verify", "evaluate", "assess", "confirm", "investigate",
+        "unsupported", "uncertainty", "unspecified", "remains unresolved"
+    }
+    if any(k in s_lower for k in uncertainty_keywords):
+        return True
+    return False
+
+
 def fail_closed_on_unsupported_sentences(text: str) -> str:
     """Splits text into sentences. Any sentence containing '[UNSUPPORTED]' is completely failed closed."""
     if "[UNSUPPORTED]" not in text:
-        return text
+        # Even if there's no [UNSUPPORTED], we still want to filter out literal model placeholders!
+        lines = text.split("\n")
+        processed_lines = []
+        for line in lines:
+            line_stripped = re.sub(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', '', line).strip()
+            if re.match(r'^\[Factual proposition unverified.*?\]$', line_stripped, re.IGNORECASE):
+                continue
+            processed_lines.append(line)
+        return "\n".join(processed_lines)
 
     lines = text.split("\n")
     processed_lines = []
     for line in lines:
         if not line.strip():
             processed_lines.append(line)
+            continue
+
+        # Drop literal placeholders immediately
+        line_stripped = re.sub(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', '', line).strip()
+        if re.match(r'^\[Factual proposition unverified.*?\]$', line_stripped, re.IGNORECASE):
             continue
 
         # Split by sentence boundaries, preserving separators
@@ -1916,19 +1997,8 @@ def fail_closed_on_unsupported_sentences(text: str) -> str:
                             # The left clause contains [UNSUPPORTED], but the right clause has ZERO unsupported words!
                             if "[UNSUPPORTED]" in left and "[UNSUPPORTED]" not in right:
                                 right_stripped = right.strip()
-                                # Verify the right clause is a valid independent epistemic/analytical statement
-                                starts_with_epistemic = right_stripped.lower().startswith(("whether", "if"))
-                                has_epistemic_phrase = any(x in right_stripped.lower() for x in ["remains unknown", "unverified", "unresolved", "unspecified", "remains to be verified"])
-
-                                has_citation = bool(re.search(r'\[E\d+\]', right_stripped, re.IGNORECASE))
-                                starts_with_action = right_stripped.lower().startswith(("define", "verify", "determine", "evaluate", "assess", "confirm", "investigate"))
-                                is_valid_right = (
-                                    starts_with_epistemic
-                                    or has_epistemic_phrase
-                                    or has_citation
-                                    or starts_with_action
-                                    or len(right_stripped.split()) >= 4
-                                )
+                                # Verify the right clause is grammatically complete
+                                is_valid_right = is_clause_grammatically_complete(right_stripped, sentence)
 
                                 if is_valid_right and len(right_stripped.split()) >= 3:
                                     valid_clause = right_stripped[0].upper() + right_stripped[1:]
@@ -1947,12 +2017,13 @@ def fail_closed_on_unsupported_sentences(text: str) -> str:
             else:
                 processed_sentences.append(sentence)
 
-        # Ensure redundant generic failure messages are dropped if they came from structural headers/titles
-        # and there's an independently valid sentence in the same line.
+        # Drop redundant generic failure messages if there's at least one valid, preserved sentence in the same line
+        # that already communicates uncertainty or is a fully supported cited clause.
         has_valid_preserved = any(
-            s.strip() and
+            re.sub(r'^(?:-\s*|\*\s*|\d+\.\s*)', '', s).strip() and
             "[UNSUPPORTED]" not in s and
-            "Evidence is insufficient to verify" not in s
+            "Evidence is insufficient to verify" not in s and
+            is_uncertainty_or_cited_sentence(s)
             for s in processed_sentences
         )
 
@@ -1960,9 +2031,8 @@ def fail_closed_on_unsupported_sentences(text: str) -> str:
             bullet_to_preserve = ""
             new_processed = []
             for idx, s in enumerate(processed_sentences):
-                orig_sentence = sentences[idx]
-                # We only drop the "Evidence is insufficient..." marker if the original sentence was a structural title/header
-                if "Evidence is insufficient to verify" in s and "**" in orig_sentence:
+                s_stripped_of_bullet = re.sub(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', '', s).strip()
+                if s_stripped_of_bullet == "Evidence is insufficient to verify this factual proposition.":
                     if not bullet_to_preserve:
                         bullet_match = re.match(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', s)
                         if bullet_match:
@@ -1979,7 +2049,15 @@ def fail_closed_on_unsupported_sentences(text: str) -> str:
 
         processed_lines.append("".join(processed_sentences))
 
-    return "\n".join(processed_lines)
+    # Finally, remove lines that became purely the generic fail-closed placeholder if they originated as literal raw placeholders
+    final_lines = []
+    for line in processed_lines:
+        if not line.strip():
+            final_lines.append(line)
+            continue
+        final_lines.append(line)
+
+    return "\n".join(final_lines)
 
 
 def market_after_model_callback(callback_context, llm_response: LlmResponse) -> LlmResponse | None:
@@ -2213,4 +2291,32 @@ def verdict_before_model_callback(callback_context, llm_request) -> None:
         else:
             _trace_log(f"Unsupported system_instruction type: {type(llm_request.config.system_instruction)}")
     finally:
+        _trace_log("=== END BEFORE-MODEL CALLBACK ===")
+        _trace_state.role = "unknown"
+
+
+def research_after_model_callback(callback_context, llm_response: LlmResponse) -> LlmResponse | None:
+    _trace_state.role = "research_agent"
+    _trace_log("=== START CALLBACK ===")
+    try:
+        ctx = callback_context.get_invocation_context()
+        if not llm_response.content or not llm_response.content.parts:
+            return None
+
+        modified = False
+        for part in llm_response.content.parts:
+            if part.text:
+                orig = part.text
+                _trace_raw_callback("research_agent", orig)
+
+                # Apply schedule semantic guard to neutralize schedule relationship presupposition
+                text = make_schedule_conditional(orig, ctx=ctx)
+
+                if text != orig:
+                    part.text = text
+                    modified = True
+
+        return llm_response if modified else None
+    finally:
+        _trace_log("=== END CALLBACK ===")
         _trace_state.role = "unknown"

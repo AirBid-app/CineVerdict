@@ -2830,3 +2830,98 @@ class TestM7A24(unittest.TestCase):
         text_w = "Determine whether those changes matter to production planning."
         out_w = make_schedule_conditional(text_w, ctx=mock_ctx)
         self.assertEqual(out_w, text_w)
+
+    def test_m7a26_integrity_closure(self):
+        from cineverdict_agent.agents.validators import (
+            clean_and_validate_hidden_facts,
+            fail_closed_on_unsupported_sentences,
+            make_schedule_conditional,
+            get_allowed_words
+        )
+        import os
+
+        # Force cleanup of placeholders for this test
+        os.environ["CINEVERDICT_FORCE_CLEANUP"] = "1"
+        try:
+            # 1. PLACEHOLDER TESTS (Section 5)
+            # A. Raw placeholder-only bullet: "* [Factual proposition unverified due to missing evidence.]" -> does not survive final output.
+            out_a = fail_closed_on_unsupported_sentences("* [Factual proposition unverified due to missing evidence.]")
+            self.assertEqual(out_a.strip(), "")
+
+            # B. Readable placeholder-only bullet: "* Evidence is insufficient to verify this factual proposition." -> does not survive.
+            out_b = fail_closed_on_unsupported_sentences("* Evidence is insufficient to verify this factual proposition.")
+            self.assertEqual(out_b.strip(), "")
+
+            # C. Placeholder-only numbered/list variant: "- Evidence is insufficient to verify this factual proposition." -> does not survive.
+            out_c = fail_closed_on_unsupported_sentences("- Evidence is insufficient to verify this factual proposition.")
+            self.assertEqual(out_c.strip(), "")
+
+            # D. Placeholder plus independently valid uncertainty in SAME bullet:
+            # "Evidence is insufficient to verify this factual proposition. Whether authorization exists remains unknown."
+            # -> remove redundant generic placeholder, preserve the independently valid uncertainty.
+            out_d = fail_closed_on_unsupported_sentences("Evidence is insufficient to verify this factual proposition. Whether authorization exists remains unknown.")
+            self.assertEqual(out_d.strip(), "Whether authorization exists remains unknown.")
+
+            # E. Entirely unsupported factual proposition with no valid remainder -> factual payload remains fail-closed; does not leak; placeholder-only bullet does not remain.
+            # "We have established production filming access at Acme headquarters [E1]." with Acme ungrounded:
+            # If it is a bullet, it fails closed, and since it is a bullet and only has placeholder, it gets removed completely!
+            text_e = "* We have established production filming access at Acme headquarters [E1]."
+            cleaned_e = clean_and_validate_hidden_facts(text_e, set(), ctx=self.mock_ctx)
+            out_e = fail_closed_on_unsupported_sentences(cleaned_e)
+            self.assertEqual(out_e.strip(), "")
+
+            # F. Meaningful explicit uncertainty survives:
+            text_f = "Evidence is insufficient to determine whether authorization exists."
+            out_f = fail_closed_on_unsupported_sentences(text_f)
+            self.assertEqual(out_f.strip(), text_f)
+
+            # 2. RELATIONSHIP / INFLUENCE TESTS (Section 8)
+            # A. "External launch movement introduces timeline uncertainty for production planning." -> must not survive as an influence proposition.
+            out_rel_a = make_schedule_conditional("External launch movement introduces timeline uncertainty for production planning.", ctx=self.mock_ctx)
+            self.assertIn("The relationship between the internal schedule and the external schedule remains unverified and unknown.", out_rel_a)
+
+            # B. "External delays create production schedule risk." -> must not survive.
+            out_rel_b = make_schedule_conditional("External delays create production schedule risk.", ctx=self.mock_ctx)
+            self.assertIn("The relationship between the internal schedule and the external schedule remains unverified and unknown.", out_rel_b)
+
+            # C. "External milestones affect the internal production timeline." -> must not survive.
+            out_rel_c = make_schedule_conditional("External milestones affect the internal production timeline.", ctx=self.mock_ctx)
+            self.assertIn("The relationship between the internal schedule and the external schedule remains unverified and unknown.", out_rel_c)
+
+            # D. "The external launch schedule has changed." -> survives as an external fact when properly grounded.
+            out_rel_d = make_schedule_conditional("The external launch schedule has changed.", ctx=self.mock_ctx)
+            self.assertEqual(out_rel_d.strip(), "The external launch schedule has changed.")
+
+            # E. "The external launch schedule is uncertain." -> survives when grounded.
+            out_rel_e = make_schedule_conditional("The external launch schedule is uncertain.", ctx=self.mock_ctx)
+            self.assertEqual(out_rel_e.strip(), "The external launch schedule is uncertain.")
+
+            # F. "Whether external schedule changes affect internal production planning remains unknown." -> survives.
+            out_rel_f = make_schedule_conditional("Whether external schedule changes affect internal production planning remains unknown.", ctx=self.mock_ctx)
+            self.assertEqual(out_rel_f.strip(), "Whether external schedule changes affect internal production planning remains unknown.")
+
+            # G. "Determine whether external schedule changes affect internal production planning." -> survives as neutral verification action.
+            out_rel_g = make_schedule_conditional("Determine whether external schedule changes affect internal production planning.", ctx=self.mock_ctx)
+            self.assertEqual(out_rel_g.strip(), "Determine whether external schedule changes affect internal production planning.")
+
+            # 3. PUNCTUATION TESTS (Section 11)
+            # A. "The distribution strategy is unspecified)." -> final output does not contain unmatched ")"
+            out_punct_a = fail_closed_on_unsupported_sentences("The distribution strategy is unspecified).")
+            self.assertEqual(out_punct_a.strip(), "The distribution strategy is unspecified.")
+
+            # B. "(The distribution strategy is unspecified." -> final output does not preserve an unmatched structural parenthesis
+            out_punct_b = fail_closed_on_unsupported_sentences("(The distribution strategy is unspecified.")
+            self.assertEqual(out_punct_b.strip(), "The distribution strategy is unspecified.")
+
+            # C. "The distribution strategy is unspecified." -> remains unchanged
+            out_punct_c = fail_closed_on_unsupported_sentences("The distribution strategy is unspecified.")
+            self.assertEqual(out_punct_c.strip(), "The distribution strategy is unspecified.")
+
+            # D. "Whether authorization exists (and under what conditions) remains unknown." -> balanced parentheses remain intact
+            text_punct_d = "Whether authorization exists (and under what conditions) remains unknown."
+            out_punct_d = fail_closed_on_unsupported_sentences(text_punct_d)
+            self.assertEqual(out_punct_d.strip(), text_punct_d)
+
+        finally:
+            if "CINEVERDICT_FORCE_CLEANUP" in os.environ:
+                del os.environ["CINEVERDICT_FORCE_CLEANUP"]

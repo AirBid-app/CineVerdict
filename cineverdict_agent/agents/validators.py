@@ -97,6 +97,7 @@ ANALYTICAL_SUBSTANTIVE_WORDS = {
     "ensure", "ensuring", "ensured",
     "analyze", "analysis", "analyst", "analytical", "analyses",
     "identify", "identification", "identified",
+    "define", "defines", "defined", "defining", "definition",
     "explore", "exploration", "explored",
     "structure", "structured", "structuring",
     "plan", "planning", "planned",
@@ -1753,9 +1754,42 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
         processed_sentences = []
         for sentence in sentences:
             s_lower = sentence.lower()
+            s_clean = re.sub(r'^(\s*(?:[-\*\+]\s+|\d+\.\s+))', '', s_lower).strip()
+
+            # 1. False Binary framing check (Defect B) - Run first to catch "whether... independent or align"
+            has_align = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["align", "alignment", "aligning", "aligned"])
+            has_indep = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["independent", "independently", "independence", "unrelated", "decoupled"])
+
+            if has_align and has_indep:
+                broad_keywords = ["dependent", "dependency", "couple", "coupled", "coupling", "decouple", "decoupling", "influence", "influences", "relationship", "related", "otherwise related", "another relationship"]
+                is_broad_neutral = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in broad_keywords)
+
+                if not is_broad_neutral:
+                    cited_ids = parse_cited_evidence_ids(sentence) if ctx is not None else []
+                    is_supported = False
+                    if ctx is not None:
+                        if is_relationship_supported("alignment", cited_ids, ctx) or is_relationship_supported("independence", cited_ids, ctx):
+                            is_supported = True
+
+                    if not is_supported:
+                        bullet_match = re.match(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', sentence)
+                        bullet_prefix = bullet_match.group(1) if bullet_match else ""
+
+                        trailing_ws = ""
+                        m = re.search(r'(\s+)$', sentence)
+                        if m:
+                            trailing_ws = m.group(1)
+
+                        is_action_sentence = classify_sentence_role(sentence) == "action" or "action" in s_lower or "should" in s_lower or "must" in s_lower or any(s_lower.strip().startswith(v) for v in ["establish", "define", "formulate", "align", "schedule", "create", "structure", "make", "organize", "plan", "coordinate", "build", "tie", "base", "adjust", "determine"])
+
+                        if is_action_sentence:
+                            sentence = f"{bullet_prefix}Determine whether any dependency, alignment, independence, coupling, influence, or other schedule relationship exists.{trailing_ws}"
+                        else:
+                            sentence = f"{bullet_prefix}Whether and how the internal schedule relates to the external schedule remains unknown.{trailing_ws}"
+                        processed_sentences.append(sentence)
+                        continue
 
             # Skip if sentence is already neutralized/conditionalized to prevent double neutralization
-            s_clean = re.sub(r'^(\s*(?:[-\*\+]\s+|\d+\.\s+))', '', s_lower).strip()
             is_neutral_action = any(s_clean.startswith(w) for w in ["determine", "verify", "evaluate", "assess"])
             if "without presupposing" in s_lower or s_clean.startswith("whether") or "remains unverified" in s_lower or "remains unknown" in s_lower or "remains to be verified" in s_lower or is_neutral_action:
                 if s_clean.startswith("whether") or "without presupposing" in s_lower or is_neutral_action:
@@ -1786,11 +1820,12 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
 
             has_relation_action = has_alignment_word or has_independence_word or has_dependency_word or has_coupling_word or has_qual_dep
 
+            # 2. Domain-General Relationship Neutralization (Defect A)
             if ctx is not None and has_relation_action:
                 has_schedule_terms = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["schedule", "timeline", "timelines", "schedules", "delivery", "release", "production", "post-production", "editorial", "documentary", "project", "film", "planning"])
                 has_external_terms = any(re.search(rf"\b{re.escape(w)}\b", s_lower) for w in ["external", "launch", "milestone", "milestones", "event", "events", "q1", "2026", "2027", "timeline", "timelines", "adjustment", "adjustments"])
 
-                if has_schedule_terms and has_external_terms:
+                if has_schedule_terms or has_external_terms or any(w in s_lower for w in ["relationship", "coupling", "dependency", "independence"]):
                     cited_ids = parse_cited_evidence_ids(sentence)
 
                     is_supported = True
@@ -1801,7 +1836,15 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
                     if (has_dependency_word or has_coupling_word or has_qual_dep) and not is_relationship_supported("dependency", cited_ids, ctx):
                         is_supported = False
 
-                    if not is_supported:
+                    is_neutral_question = (
+                        "without presupposing" in s_lower or
+                        "do not presuppose" in s_lower or
+                        "not presuppose" in s_lower or
+                        s_clean.startswith("whether") or
+                        is_neutral_action
+                    )
+
+                    if not is_supported and not is_neutral_question:
                         bullet_match = re.match(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', sentence)
                         bullet_prefix = bullet_match.group(1) if bullet_match else ""
 
@@ -1871,13 +1914,25 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
 
 
 def is_clause_grammatically_complete(clause_text: str, sentence: str) -> bool:
-    role = classify_sentence_role(sentence)
     clause_clean = clause_text.strip().strip(",;").strip()
     words = [w.lower() for w in re.findall(r"\b[a-zA-Z]+\b", clause_clean)]
     if not words:
         return False
 
     first_word = words[0]
+
+    action_verbs = {
+        "define", "verify", "determine", "evaluate", "assess", "confirm", "investigate",
+        "establish", "formulate", "schedule", "plan", "obtain", "coordinate", "align",
+        "track", "clarify", "ensure", "analyze", "identify", "explore", "mitigate",
+        "address", "check", "review", "compare"
+    }
+
+    # If the clause starts with an action verb, it is an action clause
+    if first_word in action_verbs:
+        role = "action"
+    else:
+        role = classify_sentence_role(sentence)
 
     # 1. Check disallowed leading words for any clause (including coordinating/subordinating conjunctions and leading prepositions/adverbs)
     disallowed_starters = {
@@ -2061,135 +2116,146 @@ def clean_punctuation_residues(text: str) -> str:
 def fail_closed_on_unsupported_sentences(text: str) -> str:
     """Splits text into sentences. Any sentence containing '[UNSUPPORTED]' is completely failed closed."""
     if "[UNSUPPORTED]" not in text:
+        processed_lines = text.split("\n")
+    else:
         lines = text.split("\n")
         processed_lines = []
         for line in lines:
             if not line.strip():
                 processed_lines.append(line)
                 continue
-            line_cleaned = clean_redundant_placeholders_from_line(line)
-            line_cleaned = clean_punctuation_residues(line_cleaned)
-            if is_literal_model_placeholder(line_cleaned):
+
+            # Drop literal placeholders immediately
+            line_stripped = re.sub(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', '', line).strip()
+            if re.match(r'^\[Factual proposition unverified.*?\]$', line_stripped, re.IGNORECASE):
                 continue
-            if is_generic_placeholder(line_cleaned):
-                is_in_unittest = 'unittest' in sys.modules or 'pytest' in sys.modules
-                force_cleanup = os.environ.get("CINEVERDICT_FORCE_CLEANUP") == "1"
-                if not is_in_unittest or force_cleanup:
-                    continue
-            processed_lines.append(line_cleaned)
-        return "\n".join(processed_lines)
 
-    lines = text.split("\n")
-    processed_lines = []
-    for line in lines:
-        if not line.strip():
-            processed_lines.append(line)
-            continue
-
-        # Drop literal placeholders immediately
-        line_stripped = re.sub(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', '', line).strip()
-        if re.match(r'^\[Factual proposition unverified.*?\]$', line_stripped, re.IGNORECASE):
-            continue
-
-        # Split by sentence boundaries, preserving separators
-        sentence_end = re.compile(r'([.!?]\s+)')
-        parts = sentence_end.split(line)
-        sentences = []
-        i = 0
-        while i < len(parts):
-            s = parts[i]
-            if i + 1 < len(parts):
-                s += parts[i+1]
-                i += 2
-            else:
-                i += 1
-            if s:
-                sentences.append(s)
-
-        processed_sentences = []
-        for sentence in sentences:
-            if "[UNSUPPORTED]" in sentence:
-                # Capture list markers or indentation to preserve layout structure
-                bullet_match = re.match(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', sentence)
-                bullet_prefix = bullet_match.group(1) if bullet_match else ""
-
-                # Check for trailing whitespace/newlines
-                trailing_ws = ""
-                m = re.search(r'(\s+)$', sentence)
-                if m:
-                    trailing_ws = m.group(1)
-
-                preserved = False
-
-                # M7A.16 Clause-Level Preservation
-                # Split sentence by common conjunctions or punctuation separating factual preface and independent uncertainty
-                conjunctions = [", but ", ", however, ", "; however, ", ", and ", "; "]
-                for conj in conjunctions:
-                    if conj in sentence:
-                        parts_clause = sentence.split(conj, 1)
-                        if len(parts_clause) == 2:
-                            left, right = parts_clause
-                            # The left clause contains [UNSUPPORTED], but the right clause has ZERO unsupported words!
-                            if "[UNSUPPORTED]" in left and "[UNSUPPORTED]" not in right:
-                                right_stripped = right.strip()
-                                # Verify the right clause is grammatically complete
-                                is_valid_right = is_clause_grammatically_complete(right_stripped, sentence)
-
-                                if is_valid_right and len(right_stripped.split()) >= 3:
-                                    valid_clause = right_stripped[0].upper() + right_stripped[1:]
-                                    if not valid_clause.endswith((".", "!", "?")):
-                                        valid_clause += "."
-                                    preserved_sentence = f"{bullet_prefix}{valid_clause}{trailing_ws}"
-                                    _trace_log(f"[Stage 11] Clause-level preservation: Replaced compound sentence with valid clause. Before: '{sentence.strip()}' -> After: '{preserved_sentence.strip()}'")
-                                    processed_sentences.append(preserved_sentence)
-                                    preserved = True
-                                    break
-
-                if not preserved:
-                    neutral_marker = f"{bullet_prefix}Evidence is insufficient to verify this factual proposition.{trailing_ws}"
-                    _trace_log(f"[Stage 11] Sentence-level fail-closed replacement: Sentence containing '[UNSUPPORTED]' replaced. Before: '{sentence.strip()}' -> After: '{neutral_marker.strip()}'")
-                    processed_sentences.append(neutral_marker)
-            else:
-                processed_sentences.append(sentence)
-
-        # Drop redundant generic failure messages if there's at least one valid, preserved sentence in the same line
-        # that already communicates uncertainty or is a fully supported cited clause.
-        has_valid_preserved = any(
-            re.sub(r'^(?:-\s*|\*\s*|\d+\.\s*)', '', s).strip() and
-            "[UNSUPPORTED]" not in s and
-            "Evidence is insufficient to verify" not in s and
-            is_uncertainty_or_cited_sentence(s)
-            for s in processed_sentences
-        )
-
-        if has_valid_preserved:
-            bullet_to_preserve = ""
-            new_processed = []
-            for idx, s in enumerate(processed_sentences):
-                s_stripped_of_bullet = re.sub(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', '', s).strip()
-                if s_stripped_of_bullet == "Evidence is insufficient to verify this factual proposition.":
-                    if not bullet_to_preserve:
-                        bullet_match = re.match(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', s)
-                        if bullet_match:
-                            bullet_to_preserve = bullet_match.group(1)
+            # Split by sentence boundaries, preserving separators
+            sentence_end = re.compile(r'([.!?]\s+)')
+            parts = sentence_end.split(line)
+            sentences = []
+            i = 0
+            while i < len(parts):
+                s = parts[i]
+                if i + 1 < len(parts):
+                    s += parts[i+1]
+                    i += 2
                 else:
-                    new_processed.append(s)
+                    i += 1
+                if s:
+                    sentences.append(s)
 
-            if bullet_to_preserve and new_processed:
-                first_s = new_processed[0]
-                first_s_clean = re.sub(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', '', first_s)
-                new_processed[0] = bullet_to_preserve + first_s_clean
+            processed_sentences = []
+            for sentence in sentences:
+                if "[UNSUPPORTED]" in sentence:
+                    # Capture list markers or indentation to preserve layout structure
+                    bullet_match = re.match(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', sentence)
+                    bullet_prefix = bullet_match.group(1) if bullet_match else ""
 
-            processed_sentences = new_processed
+                    # Check for trailing whitespace/newlines
+                    trailing_ws = ""
+                    m = re.search(r'(\s+)$', sentence)
+                    if m:
+                        trailing_ws = m.group(1)
 
-        processed_lines.append("".join(processed_sentences))
+                    preserved = False
+
+                    # M7A.16 Clause-Level Preservation
+                    # Split sentence by common conjunctions or punctuation separating factual preface and independent uncertainty
+                    conjunctions = [", but ", ", however, ", "; however, ", ", and "]
+                    for conj in conjunctions:
+                        if conj in sentence:
+                            parts_clause = sentence.split(conj, 1)
+                            if len(parts_clause) == 2:
+                                left, right = parts_clause
+                                # The left clause contains [UNSUPPORTED], but the right clause has ZERO unsupported words!
+                                if "[UNSUPPORTED]" in left and "[UNSUPPORTED]" not in right:
+                                    right_stripped = right.strip()
+                                    # Verify the right clause is grammatically complete
+                                    is_valid_right = is_clause_grammatically_complete(right_stripped, sentence)
+
+                                    if is_valid_right and len(right_stripped.split()) >= 3:
+                                        valid_clause = right_stripped[0].upper() + right_stripped[1:]
+                                        if not valid_clause.endswith((".", "!", "?")):
+                                            valid_clause += "."
+                                        preserved_sentence = f"{bullet_prefix}{valid_clause}{trailing_ws}"
+                                        _trace_log(f"[Stage 11] Clause-level preservation: Replaced compound sentence with valid clause. Before: '{sentence.strip()}' -> After: '{preserved_sentence.strip()}'")
+                                        processed_sentences.append(preserved_sentence)
+                                        preserved = True
+                                        break
+                                elif conj != ", and " and "[UNSUPPORTED]" not in left and "[UNSUPPORTED]" in right:
+                                    left_stripped = left.strip()
+                                    left_stripped = re.sub(r'^(?:-\s*|\*\s*|\d+\.\s*)', '', left_stripped).strip()
+                                    is_valid_left = is_clause_grammatically_complete(left_stripped, sentence)
+
+                                    if is_valid_left and len(left_stripped.split()) >= 3:
+                                        valid_clause = left_stripped[0].upper() + left_stripped[1:]
+                                        if not valid_clause.endswith((".", "!", "?")):
+                                            valid_clause += "."
+                                        preserved_sentence = f"{bullet_prefix}{valid_clause}{trailing_ws}"
+                                        _trace_log(f"[Stage 11] Clause-level preservation: Replaced compound sentence with valid left clause. Before: '{sentence.strip()}' -> After: '{preserved_sentence.strip()}'")
+                                        processed_sentences.append(preserved_sentence)
+                                        preserved = True
+                                        break
+
+                    if not preserved:
+                        neutral_marker = f"{bullet_prefix}Evidence is insufficient to verify this factual proposition.{trailing_ws}"
+                        _trace_log(f"[Stage 11] Sentence-level fail-closed replacement: Sentence containing '[UNSUPPORTED]' replaced. Before: '{sentence.strip()}' -> After: '{neutral_marker.strip()}'")
+                        processed_sentences.append(neutral_marker)
+                else:
+                    processed_sentences.append(sentence)
+
+            # Drop redundant generic failure messages if there's at least one valid, preserved sentence in the same line
+            # that already communicates uncertainty or is a fully supported cited clause.
+            has_valid_preserved = any(
+                re.sub(r'^(?:-\s*|\*\s*|\d+\.\s*)', '', s).strip() and
+                "[UNSUPPORTED]" not in s and
+                "Evidence is insufficient to verify" not in s and
+                is_uncertainty_or_cited_sentence(s)
+                for s in processed_sentences
+            )
+
+            if has_valid_preserved:
+                bullet_to_preserve = ""
+                new_processed = []
+                for idx, s in enumerate(processed_sentences):
+                    s_stripped_of_bullet = re.sub(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', '', s).strip()
+                    if s_stripped_of_bullet == "Evidence is insufficient to verify this factual proposition.":
+                        if not bullet_to_preserve:
+                            bullet_match = re.match(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', s)
+                            if bullet_match:
+                                bullet_to_preserve = bullet_match.group(1)
+                    else:
+                        new_processed.append(s)
+
+                if bullet_to_preserve and new_processed:
+                    first_s = new_processed[0]
+                    first_s_clean = re.sub(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', '', first_s)
+                    new_processed[0] = bullet_to_preserve + first_s_clean
+
+                processed_sentences = new_processed
+
+            processed_lines.append("".join(processed_sentences))
 
     # Finally, remove lines that became purely the generic fail-closed placeholder if they originated as literal raw placeholders
     final_lines = []
+    current_section = None
     for line in processed_lines:
         if not line.strip():
             final_lines.append(line)
             continue
+
+        # Track current section for Action Integrity check (Defect C)
+        if line.strip().startswith("###") or (line.strip().startswith("**") and line.strip().endswith("**") and ":" not in line):
+            header_text = line.strip().strip("#*").strip().upper()
+            if "ACTION" in header_text or "VERIFY FIRST" in header_text:
+                current_section = "REQUIRED NEXT ACTIONS"
+            elif "UNCERTAINTIES" in header_text or "EVIDENCE" in header_text:
+                current_section = "UNRESOLVED UNCERTAINTIES"
+            elif "VERDICT" in header_text or "CONFIDENCE" in header_text or "REASONS" in header_text:
+                current_section = "OTHER"
+            else:
+                current_section = None
 
         # 1. Clean redundant placeholders from the line
         line_cleaned = clean_redundant_placeholders_from_line(line)
@@ -2206,6 +2272,26 @@ def fail_closed_on_unsupported_sentences(text: str) -> str:
             is_in_unittest = 'unittest' in sys.modules or 'pytest' in sys.modules
             force_cleanup = os.environ.get("CINEVERDICT_FORCE_CLEANUP") == "1"
             if not is_in_unittest or force_cleanup:
+                continue
+
+        # 4. Action Integrity validation (Defect C)
+        if current_section == "REQUIRED NEXT ACTIONS" and (line_cleaned.strip().startswith("*") or line_cleaned.strip().startswith("-") or re.match(r'^\d+\.', line_cleaned.strip())):
+            clean_item = re.sub(r'^(?:-\s*|\*\s*|\d+\.\s*)', '', line_cleaned.strip()).strip()
+            clean_item = re.sub(r'^\*\*.*?\*\*[:\s]*', '', clean_item).strip()
+            first_word_match = re.match(r'^([a-zA-Z]+)', clean_item)
+            if first_word_match:
+                first_word = first_word_match.group(1).lower()
+                action_verbs = {
+                    "define", "verify", "determine", "evaluate", "assess", "confirm", "investigate",
+                    "establish", "formulate", "schedule", "plan", "obtain", "coordinate", "align",
+                    "track", "clarify", "ensure", "analyze", "identify", "explore", "mitigate",
+                    "address", "check", "review", "compare"
+                }
+                if first_word not in action_verbs:
+                    _trace_log(f"[Action integrity] Dropping incomplete action line: '{line_cleaned}'")
+                    continue
+            else:
+                _trace_log(f"[Action integrity] Dropping empty/wordless action line: '{line_cleaned}'")
                 continue
 
         final_lines.append(line_cleaned)
@@ -2461,6 +2547,33 @@ def research_after_model_callback(callback_context, llm_response: LlmResponse) -
             if part.text:
                 orig = part.text
                 _trace_raw_callback("research_agent", orig)
+
+                # Apply schedule semantic guard to neutralize schedule relationship presupposition
+                text = make_schedule_conditional(orig, ctx=ctx)
+
+                if text != orig:
+                    part.text = text
+                    modified = True
+
+        return llm_response if modified else None
+    finally:
+        _trace_log("=== END CALLBACK ===")
+        _trace_state.role = "unknown"
+
+
+def director_after_model_callback(callback_context, llm_response: LlmResponse) -> LlmResponse | None:
+    _trace_state.role = "director_agent"
+    _trace_log("=== START CALLBACK ===")
+    try:
+        ctx = callback_context.get_invocation_context()
+        if not llm_response.content or not llm_response.content.parts:
+            return None
+
+        modified = False
+        for part in llm_response.content.parts:
+            if part.text:
+                orig = part.text
+                _trace_raw_callback("director_agent", orig)
 
                 # Apply schedule semantic guard to neutralize schedule relationship presupposition
                 text = make_schedule_conditional(orig, ctx=ctx)

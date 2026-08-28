@@ -2925,3 +2925,163 @@ class TestM7A24(unittest.TestCase):
         finally:
             if "CINEVERDICT_FORCE_CLEANUP" in os.environ:
                 del os.environ["CINEVERDICT_FORCE_CLEANUP"]
+
+
+class TestM7A27(unittest.TestCase):
+
+    def setUp(self):
+        self.mock_ctx = MagicMock()
+        mock_event_user = MagicMock()
+        mock_event_user.author = "user"
+        mock_event_user.output = "Evaluate documentary about Vast Space."
+        self.mock_ctx.session.events = [mock_event_user]
+
+    def test_director_regression_tests(self):
+        from cineverdict_agent.agents.validators import make_schedule_conditional
+
+        # A. "The relationship is unverified; assume the schedules are independent unless evidence establishes coupling."
+        # without relationship evidence -> unsupported independence must not survive.
+        out_a = make_schedule_conditional("The relationship is unverified; assume the schedules are independent unless evidence establishes coupling.", ctx=self.mock_ctx)
+        self.assertNotIn("assume the schedules are independent", out_a)
+        self.assertIn("remains unverified and unknown", out_a)
+
+        # B. "Assume no dependency unless evidence establishes one."
+        # without relationship evidence -> must not survive.
+        out_b = make_schedule_conditional("Assume no dependency unless evidence establishes one.", ctx=self.mock_ctx)
+        self.assertNotIn("Assume no dependency", out_b)
+        self.assertIn("remains unverified and unknown", out_b)
+
+        # C. "The relationship remains unverified and unknown." -> survives.
+        text_c = "The relationship remains unverified and unknown."
+        out_c = make_schedule_conditional(text_c, ctx=self.mock_ctx)
+        self.assertEqual(out_c.strip(), text_c)
+
+        # D. "Determine whether the schedules are independent, dependent, aligned, coupled, or otherwise related." -> survives.
+        text_d = "Determine whether the schedules are independent, dependent, aligned, coupled, or otherwise related."
+        out_d = make_schedule_conditional(text_d, ctx=self.mock_ctx)
+        self.assertEqual(out_d.strip(), text_d)
+
+        # E. "Do not presuppose independence or dependency." -> survives.
+        text_e = "Do not presuppose independence or dependency."
+        out_e = make_schedule_conditional(text_e, ctx=self.mock_ctx)
+        self.assertEqual(out_e.strip(), text_e)
+
+        # F. Evidence-supported independence -> survives.
+        research_ledger = """
+        RESEARCH EVIDENCE BRIEF
+        EVIDENCE LEDGER
+        E1 — Claim: Schedules are independent.
+        Supporting Excerpt: "The external and internal schedules are completely independent timelines."
+        """
+        mock_ctx_supp = MagicMock()
+        mock_event_res = MagicMock()
+        mock_event_res.author = "research_agent"
+        mock_event_res.output = research_ledger
+        mock_ctx_supp.session.events = [mock_event_res]
+
+        text_f = "The internal schedules are independent [E1]."
+        out_f = make_schedule_conditional(text_f, ctx=mock_ctx_supp)
+        self.assertEqual(out_f.strip(), text_f)
+
+    def test_false_binary_regression_tests(self):
+        from cineverdict_agent.agents.validators import make_schedule_conditional
+
+        # A. "Whether the internal schedule will remain independent of or align with the external schedule."
+        # without relationship evidence -> must not survive unchanged as a binary choice.
+        out_a = make_schedule_conditional("Whether the internal schedule will remain independent of or align with the external schedule.", ctx=self.mock_ctx)
+        self.assertNotIn("independent of or align with", out_a)
+        self.assertIn("remains unknown", out_a)
+
+        # B. "Determine whether to align the schedules or keep them independent."
+        # without evidence -> must neutralize.
+        out_b = make_schedule_conditional("Determine whether to align the schedules or keep them independent.", ctx=self.mock_ctx)
+        self.assertNotIn("keep them independent", out_b)
+        self.assertIn("Determine whether any dependency, alignment, independence, coupling, influence", out_b)
+
+        # C. "Whether and how the schedules are related remains unknown." -> survives.
+        text_c = "Whether and how the schedules are related remains unknown."
+        out_c = make_schedule_conditional(text_c, ctx=self.mock_ctx)
+        self.assertEqual(out_c.strip(), text_c)
+
+        # D. "Determine whether any relationship exists." -> survives.
+        text_d = "Determine whether any relationship exists."
+        out_d = make_schedule_conditional(text_d, ctx=self.mock_ctx)
+        self.assertEqual(out_d.strip(), text_d)
+
+        # E. "Determine whether dependency, alignment, independence, coupling, influence, or another relationship exists." -> survives.
+        text_e = "Determine whether dependency, alignment, independence, coupling, influence, or another relationship exists."
+        out_e = make_schedule_conditional(text_e, ctx=self.mock_ctx)
+        self.assertEqual(out_e.strip(), text_e)
+
+        # F. Evidence-supported binary relationship fixture -> survives when evidence exists.
+        research_ledger = """
+        RESEARCH EVIDENCE BRIEF
+        EVIDENCE LEDGER
+        E1 — Claim: We align or keep independent.
+        Supporting Excerpt: "The contract allows us to either align or keep the production independent."
+        """
+        mock_ctx_supp = MagicMock()
+        mock_event_res = MagicMock()
+        mock_event_res.author = "research_agent"
+        mock_event_res.output = research_ledger
+        mock_ctx_supp.session.events = [mock_event_res]
+
+        text_f = "Whether we align with or remain independent of the external schedule [E1]."
+        out_f = make_schedule_conditional(text_f, ctx=mock_ctx_supp)
+        self.assertEqual(out_f.strip(), text_f)
+
+    def test_action_regression_tests(self):
+        from cineverdict_agent.agents.validators import fail_closed_on_unsupported_sentences, clean_and_validate_hidden_facts
+
+        # To test actions, they must be processed under REQUIRED NEXT ACTIONS section.
+        input_header = "### REQUIRED NEXT ACTIONS\n"
+
+        # A. "Target runtime without presupposing an external schedule dependency." -> does not survive as complete action.
+        text_a = f"{input_header}*   Target runtime without presupposing an external schedule dependency."
+        out_a = fail_closed_on_unsupported_sentences(text_a)
+        self.assertNotIn("Target runtime", out_a)
+
+        # B. "Define the target runtime without presupposing an external schedule dependency." -> survives.
+        text_b = f"{input_header}*   Define the target runtime without presupposing an external schedule dependency."
+        out_b = fail_closed_on_unsupported_sentences(text_b)
+        self.assertIn("Define the target runtime", out_b)
+
+        # C. "Conditionally determine if alignment with the external schedule is desired." without evidence -> relationship semantics neutral.
+        # Wait, "conditionally determine" starts with "conditionally", which is not an action verb. So it should not survive as a complete action!
+        text_c = f"{input_header}*   Conditionally determine if alignment with the external schedule is desired."
+        out_c = fail_closed_on_unsupported_sentences(text_c)
+        self.assertNotIn("Conditionally determine", out_c)
+
+        # D. "Determine whether any relationship with the external schedule is intended or required." -> survives.
+        text_d = f"{input_header}*   Determine whether any relationship with the external schedule is intended or required."
+        out_d = fail_closed_on_unsupported_sentences(text_d)
+        self.assertIn("Determine whether any relationship", out_d)
+
+        # E. Action with unsupported factual preface + independently valid complete action -> preface fails closed, complete action survives.
+        # E.g.: "* We have established access at Acme [E1], and define the target runtime."
+        # Acme is ungrounded proper noun.
+        text_e = f"{input_header}*   We have established access at Acme [E1], and define the target runtime."
+        # clean_and_validate_hidden_facts will find Acme ungrounded, and redact to [UNSUPPORTED]
+        cleaned_e = clean_and_validate_hidden_facts(text_e, set(), ctx=self.mock_ctx)
+        out_e = fail_closed_on_unsupported_sentences(cleaned_e)
+        self.assertNotIn("Acme", out_e)
+        self.assertIn("Define the target runtime", out_e)
+
+        # F. Action whose validation removes its governing verb -> orphaned remainder must not survive.
+        # E.g.: "* Define the target runtime at Acme [E1]."
+        # Acme is ungrounded.
+        text_f = f"{input_header}*   Define the target runtime at Acme [E1]."
+        cleaned_f = clean_and_validate_hidden_facts(text_f, set(), ctx=self.mock_ctx)
+        out_f = fail_closed_on_unsupported_sentences(cleaned_f)
+        self.assertNotIn("Define the target runtime", out_f)
+        self.assertNotIn("target runtime", out_f)
+
+        # G. Action whose governing verb remains -> survives.
+        # E.g.: "* Define the target runtime, but filming at Acme [E1] remains unsupported."
+        # Left clause: "Define the target runtime", right clause has unsupported.
+        # The right clause is dropped, left clause survives.
+        text_g = f"{input_header}*   Define the target runtime, but filming at Acme [E1] remains unsupported."
+        cleaned_g = clean_and_validate_hidden_facts(text_g, set(), ctx=self.mock_ctx)
+        out_g = fail_closed_on_unsupported_sentences(cleaned_g)
+        self.assertIn("Define the target runtime", out_g)
+        self.assertNotIn("Acme", out_g)

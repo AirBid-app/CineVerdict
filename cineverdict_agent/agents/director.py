@@ -1,10 +1,12 @@
 from google.adk.agents.llm_agent import Agent
 from google.adk.models import Gemini
 from google.genai import types
+from .validators import director_after_model_callback
 
 
 director_agent = Agent(
     model=Gemini(model="gemini-3.5-flash", retry_options=types.HttpRetryOptions(attempts=3)),
+    after_model_callback=director_after_model_callback,
     name="director_agent",
     timeout=120.0,
     output_key="director_plan",

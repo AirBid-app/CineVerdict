@@ -157,6 +157,7 @@ def classify_sentence_role(sentence: str) -> str:
 # ---------------------------------------------------------------------------
 def clean_and_validate_hidden_facts(text: str, allowed_words: Set[str], ctx=None) -> str:
     """Replaces unauthorized proper nouns/numbers with [UNSUPPORTED]."""
+    _trace_log("Starting clean_and_validate_hidden_facts")
     text = text.replace("&#58;", ":")
     ev_map = get_evidence_excerpts_map(get_research_text(ctx)) if ctx else {}
     
@@ -202,6 +203,7 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: Set[str], ctx=None
             unauthorized = []
             for t in tokens:
                 tl = t.lower()
+                if re.match(r"^e\d+$", tl): continue
                 if tl not in local_allowed and not any(tl.startswith(a) for a in local_allowed):
                     if role == "factual" or (tl not in ANALYTICAL_WORDS):
                         unauthorized.append(t)
@@ -270,17 +272,17 @@ def neutralize_positive_assumptions(text: str) -> str:
                 continue
             s_clean = line.lower()
             if any(x in s_clean for x in ["audience", "demand", "interest", "market"]):
-                out.append(re.sub(r'.*', "Audience demand remains unverified and whether a reachable audience exists remains unknown.", line))
+                out.append(re.sub(r'^.*$', "Audience demand remains unverified and whether a reachable audience exists remains unknown.", line))
             elif "access" in s_clean or "coordination" in s_clean:
-                out.append(re.sub(r'.*', "Access has not been established and remains unverified.", line))
+                out.append(re.sub(r'^.*$', "Access has not been established and remains unverified.", line))
             elif "funding" in s_clean or "budget" in s_clean:
-                out.append(re.sub(r'.*', "Funding status is unspecified and remains unverified.", line))
+                out.append(re.sub(r'^.*$', "Funding status is unspecified and remains unverified.", line))
             elif any(x in s_clean for x in ["rights", "authorization", "licensing", "clearance", "permission"]):
-                out.append(re.sub(r'.*', "Rights/authorization remain to be verified.", line))
+                out.append(re.sub(r'^.*$', "Rights/authorization remain to be verified.", line))
             elif any(x in s_clean for x in ["schedule", "timeline", "independent", "affect", "impact"]):
-                if "independent" in s_clean: out.append(re.sub(r'.*', "The relationship between the internal schedule and the external schedule is unverified.", line))
-                elif "affect" in s_clean: out.append(re.sub(r'.*', "Whether the external schedule affects the internal production timeline remains unverified.", line))
-                else: out.append(re.sub(r'.*', "The production timeline and schedule relationship remains unverified.", line))
+                if "independent" in s_clean: out.append(re.sub(r'^.*$', "The relationship between the internal schedule and the external schedule is unverified.", line))
+                elif "affect" in s_clean: out.append(re.sub(r'^.*$', "Whether the external schedule affects the internal production timeline remains unverified.", line))
+                else: out.append(re.sub(r'^.*$', "The production timeline and schedule relationship remains unverified.", line))
             else:
                 out.append(line)
         else:

@@ -1,3 +1,11 @@
+"""CineVerdict Parallel Search Integration.
+
+This module provides the core web search capability for CineVerdict by integrating
+the Parallel Web Systems Search API. It includes a thread-safe search budget tracker
+limiting queries to 6 per research burst, idle-based budget resetting, custom
+timeout configuration, and robust fallback/error logging returned as structured JSON.
+"""
+
 import json
 import os
 import threading
@@ -6,93 +14,93 @@ import time
 from dotenv import load_dotenv
 from parallel import Parallel
 
-
+# Securely load env file containing Parallel and Google Cloud keys
 load_dotenv("cineverdict_agent/.env", override=True)
 
-DEFAULT_PARALLEL_TIMEOUT_SECONDS = 30.0
-MAX_PARALLEL_SEARCHES_PER_RESEARCH_BURST = 6
-PARALLEL_BUDGET_IDLE_RESET_SECONDS = 15.0
+# Safe boundary settings for search execution
+MAX_BURST_QUERIES = 6
+IDLE_RESET_THRESHOLD_SEC = 15.0
+DEFAULT_TIMEOUT_SEC = 30.0
 
-_budget_lock = threading.Lock()
-_budget_count = 0
-_budget_last_completed_at = 0.0
+# Thread-safe synchronization and budget metrics
+_state_lock = threading.Lock()
+_burst_query_count = 0
+_last_completed_timestamp = 0.0
 
 
-def _parallel_timeout_seconds() -> float:
-    raw_value = os.getenv("PARALLEL_SEARCH_TIMEOUT_SECONDS")
-    if not raw_value:
-        return DEFAULT_PARALLEL_TIMEOUT_SECONDS
-
+def _get_configured_timeout() -> float:
+    """Read, parse, and clamp the search timeout from configuration settings."""
+    env_timeout = os.getenv("PARALLEL_SEARCH_TIMEOUT_SECONDS")
+    if not env_timeout:
+        return DEFAULT_TIMEOUT_SEC
     try:
-        value = float(raw_value)
+        parsed = float(env_timeout)
+        # Enforce safe engineering limits
+        return max(5.0, min(parsed, 120.0))
     except ValueError:
-        return DEFAULT_PARALLEL_TIMEOUT_SECONDS
-
-    return max(5.0, min(value, 120.0))
+        return DEFAULT_TIMEOUT_SEC
 
 
-def _claim_search_budget() -> tuple[bool, int]:
-    """Reserve one search slot for the current active Research burst.
+def _acquire_search_slot() -> tuple[bool, int]:
+    """Reserve a slot for the search call, resetting the tracking count if idle.
 
-    A quiet gap resets the counter so later evaluations get a fresh budget.
-    The counter is enforced in code, not only by agent instructions.
+    Enforces a strict budget of max 6 queries per active burst to protect against API loops.
     """
-    global _budget_count, _budget_last_completed_at
-
+    global _burst_query_count, _last_completed_timestamp
     now = time.monotonic()
-    with _budget_lock:
+
+    with _state_lock:
+        # Check if the pipeline was idle long enough to reset the search budget
         if (
-            _budget_last_completed_at
-            and now - _budget_last_completed_at >= PARALLEL_BUDGET_IDLE_RESET_SECONDS
+            _last_completed_timestamp > 0.0
+            and now - _last_completed_timestamp >= IDLE_RESET_THRESHOLD_SEC
         ):
-            _budget_count = 0
+            _burst_query_count = 0
 
-        if _budget_count >= MAX_PARALLEL_SEARCHES_PER_RESEARCH_BURST:
-            return False, _budget_count
+        if _burst_query_count >= MAX_BURST_QUERIES:
+            return False, _burst_query_count
 
-        _budget_count += 1
-        return True, _budget_count
+        _burst_query_count += 1
+        return True, _burst_query_count
 
 
-def _mark_search_completed() -> None:
-    global _budget_last_completed_at
-    with _budget_lock:
-        _budget_last_completed_at = time.monotonic()
+def _record_search_completion() -> None:
+    """Track the exact timestamp when a search query completes."""
+    global _last_completed_timestamp
+    with _state_lock:
+        _last_completed_timestamp = time.monotonic()
 
 
 def parallel_search(query: str, domain: str | None = None) -> str:
-    """Search the live web with Parallel and optionally restrict results to one domain.
+    """Execute a query against the live web using the Parallel Search SDK.
 
-    Each request has a hard client timeout, and each active Research burst has a
-    hard six-call budget. Tool failures and budget exhaustion are returned as
-    structured JSON so Research can mark the evidence unresolved instead of
-    hanging or silently exceeding the contract.
+    Supports optional domain filtering for primary-source verification. All outcomes,
+    including exceptions, budget limits, or missing credentials, are returned as
+    serialized JSON to let the downstream agent adapt to uncertainty without crashing.
     """
-    allowed, search_number = _claim_search_budget()
-    if not allowed:
-        print("[Parallel] search budget exhausted (max=6)")
+    is_budget_ok, current_call_index = _acquire_search_slot()
+    if not is_budget_ok:
+        print(f"[Parallel Search] Budget exhausted (Limit: {MAX_BURST_QUERIES})")
         return json.dumps(
             {
                 "ok": False,
                 "error": "Parallel search budget exhausted for this research burst.",
                 "query": query,
                 "domain": domain,
-                "max_searches": MAX_PARALLEL_SEARCHES_PER_RESEARCH_BURST,
+                "max_searches": MAX_BURST_QUERIES,
             }
         )
 
-    timeout_seconds = _parallel_timeout_seconds()
+    timeout = _get_configured_timeout()
+    domain_msg = f" restricted to {domain}" if domain else ""
     print(
-        f"[Parallel] search invoked "
-        f"(call={search_number}/{MAX_PARALLEL_SEARCHES_PER_RESEARCH_BURST}, "
-        f"timeout={timeout_seconds:g}s"
-        + (f", domain={domain}" if domain else "")
-        + ")"
+        f"[Parallel Search] Initiating query #{current_call_index}/{MAX_BURST_QUERIES} "
+        f"(Timeout: {timeout:g}s{domain_msg})"
     )
 
     api_key = os.getenv("PARALLEL_API_KEY")
     if not api_key:
-        _mark_search_completed()
+        _record_search_completion()
         return json.dumps(
             {
                 "ok": False,
@@ -102,32 +110,33 @@ def parallel_search(query: str, domain: str | None = None) -> str:
             }
         )
 
+    # Initialize SDK client and search parameters
     client = Parallel(api_key=api_key)
-    search_kwargs = {
+    search_params = {
         "search_queries": [query],
     }
 
     if domain:
-        search_kwargs["advanced_settings"] = {
+        search_params["advanced_settings"] = {
             "source_policy": {
                 "include_domains": [domain],
             }
         }
 
     try:
-        result = client.search(**search_kwargs, timeout=timeout_seconds)
-    except Exception as exc:
-        print(f"[Parallel] search failed: {type(exc).__name__}: {exc}")
+        search_result = client.search(**search_params, timeout=timeout)
+    except Exception as error:
+        print(f"[Parallel Search] Execution failed: {type(error).__name__}: {error}")
         return json.dumps(
             {
                 "ok": False,
-                "error": f"{type(exc).__name__}: {exc}",
+                "error": f"{type(error).__name__}: {error}",
                 "query": query,
                 "domain": domain,
-                "timeout_seconds": timeout_seconds,
+                "timeout_seconds": timeout,
             }
         )
     finally:
-        _mark_search_completed()
+        _record_search_completion()
 
-    return result.model_dump_json(indent=2, exclude_none=True)
+    return search_result.model_dump_json(indent=2, exclude_none=True)

@@ -178,17 +178,18 @@ Completed:
 - Successful end-to-end runtime validation
 - Git version control
 - GitHub repository
+- **Agentic Cinema hackathon demo experience**
+- **100% Gemini CLI-native compliance remediation**
 
 ## Development Roadmap
 
-Next phases:
+Next phases (Post-Hackathon):
 
 - Professional CineVerdict web interface
 - Structured evidence and citation presentation
 - Persistent project and evaluation history
 - Production deployment on Google Cloud
 - Expanded evaluation workflows
-- Agentic Cinema hackathon demo experience
 
 ## Security
 
@@ -204,4 +205,4 @@ The repository excludes:
 
 ## License
 
-A project license will be added before public release.
+This project is licensed under the Apache License 2.0. See the accompanying `LICENSE` file for full terms and conditions.

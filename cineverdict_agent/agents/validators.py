@@ -77,19 +77,19 @@ def get_user_text(ctx) -> str:
     """Extracts the latest user prompt from the ADK context."""
     c = _get_ctx(ctx)
     if not c or not hasattr(c, 'session'): return ""
-    user_events = [e.output for e in c.session.events if getattr(e, 'author', '') == 'user']
+    user_events = [e.output for e in c.session.events if getattr(e, 'author', '') == 'user' and isinstance(e.output, str) and e.output.strip()]
     return user_events[-1] if user_events else ""
 
 def get_director_text(ctx) -> str:
     c = _get_ctx(ctx)
     if not c or not hasattr(c, 'session'): return ""
-    evs = [e.output for e in c.session.events if getattr(e, 'author', '') == 'director_agent']
+    evs = [e.output for e in c.session.events if getattr(e, 'author', '') == 'director_agent' and isinstance(e.output, str) and e.output.strip()]
     return evs[-1] if evs else ""
 
 def get_research_text(ctx) -> str:
     c = _get_ctx(ctx)
     if not c or not hasattr(c, 'session'): return ""
-    evs = [e.output for e in c.session.events if getattr(e, 'author', '') == 'research_agent']
+    evs = [e.output for e in c.session.events if getattr(e, 'author', '') == 'research_agent' and isinstance(e.output, str) and e.output.strip()]
     return evs[-1] if evs else ""
 
 def extract_supporting_excerpts(text: str) -> List[str]:
@@ -361,42 +361,61 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
 def parse_evidence_ledger_table(text: str) -> Optional[Tuple[Dict[str, List[str]], Dict[str, List[str]]]]:
     return None
 
-def verdict_before_model_callback(ctx, req):
+def verdict_before_model_callback(callback_context, llm_request):
     """Binds active evidence IDs to system instructions."""
+    ctx = _get_ctx(callback_context)
     ledger = get_research_text(ctx)
     cits = re.findall(r'\b(E\d+)\b', ledger)
     ids = sorted(list(set(cits)))
-    base = req.config.system_instruction or ""
+    base = llm_request.config.system_instruction or ""
     if not ids:
-        req.config.system_instruction = base + "\nDYNAMIC EVIDENCE LEDGER BINDING CONTRACT: There is NO active Research Evidence Ledger. You are STRICTLY prohibited from making any cited factual assertions."
+        llm_request.config.system_instruction = base + "\nDYNAMIC EVIDENCE LEDGER BINDING CONTRACT: There is NO active Research Evidence Ledger. You are STRICTLY prohibited from making any cited factual assertions."
     else:
-        req.config.system_instruction = base + f"\nDYNAMIC EVIDENCE LEDGER BINDING CONTRACT: You may ONLY cite the following active evidence keys: {', '.join(ids)}."
+        llm_request.config.system_instruction = base + f"\nDYNAMIC EVIDENCE LEDGER BINDING CONTRACT: You may ONLY cite the following active evidence keys: {', '.join(ids)}."
 
 def _apply_validators(ctx, response: LlmResponse) -> LlmResponse:
-    if not response or not response.text: return response
-    allowed = get_allowed_words(ctx)
-    t = response.text
-    t = clean_and_validate_hidden_facts(t, allowed, ctx)
-    t = fail_closed_on_unsupported_sentences(t)
-    t = neutralize_positive_assumptions(t)
-    t = neutralize_audience_assumptions(t)
-    t = neutralize_production_assumptions(t)
-    t = neutralize_evaluative_words(t, allowed)
-    t = make_schedule_conditional(t, ctx)
-    response.text = t
+    if not response or not hasattr(response, 'content') or not response.content or not hasattr(response.content, 'parts') or not response.content.parts:
+        return response
+    for part in response.content.parts:
+        if part.text:
+            allowed = get_allowed_words(ctx)
+            t = part.text
+            t = clean_and_validate_hidden_facts(t, allowed, ctx)
+            t = fail_closed_on_unsupported_sentences(t)
+            t = neutralize_positive_assumptions(t)
+            t = neutralize_audience_assumptions(t)
+            t = neutralize_production_assumptions(t)
+            t = neutralize_evaluative_words(t, allowed)
+            t = make_schedule_conditional(t, ctx)
+            part.text = t
     return response
 
-def market_after_model_callback(ctx, response: LlmResponse) -> LlmResponse:
-    return _apply_validators(ctx, response)
+def market_after_model_callback(callback_context, llm_response: LlmResponse) -> LlmResponse:
+    ctx = _get_ctx(callback_context)
+    return _apply_validators(ctx, llm_response)
 
-def production_risk_after_model_callback(ctx, response: LlmResponse) -> LlmResponse:
-    return _apply_validators(ctx, response)
+def production_risk_after_model_callback(callback_context, llm_response: LlmResponse) -> LlmResponse:
+    ctx = _get_ctx(callback_context)
+    return _apply_validators(ctx, llm_response)
 
-def verdict_after_model_callback(ctx, response: LlmResponse) -> LlmResponse:
-    return _apply_validators(ctx, response)
+def verdict_after_model_callback(callback_context, llm_response: LlmResponse) -> LlmResponse:
+    ctx = _get_ctx(callback_context)
+    return _apply_validators(ctx, llm_response)
 
-def research_after_model_callback(ctx, response: LlmResponse) -> LlmResponse:
-    return response
+def research_after_model_callback(callback_context, llm_response: LlmResponse) -> LlmResponse:
+    ctx = _get_ctx(callback_context)
+    if not llm_response or not hasattr(llm_response, 'content') or not llm_response.content or not hasattr(llm_response.content, 'parts') or not llm_response.content.parts:
+        return llm_response
+    for part in llm_response.content.parts:
+        if part.text:
+            part.text = make_schedule_conditional(part.text, ctx)
+    return llm_response
 
-def director_after_model_callback(ctx, response: LlmResponse) -> LlmResponse:
-    return response
+def director_after_model_callback(callback_context, llm_response: LlmResponse) -> LlmResponse:
+    ctx = _get_ctx(callback_context)
+    if not llm_response or not hasattr(llm_response, 'content') or not llm_response.content or not hasattr(llm_response.content, 'parts') or not llm_response.content.parts:
+        return llm_response
+    for part in llm_response.content.parts:
+        if part.text:
+            part.text = make_schedule_conditional(part.text, ctx)
+    return llm_response

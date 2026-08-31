@@ -44,9 +44,12 @@ class TestValidators(unittest.TestCase):
 
     def _run_full_pipeline(self, text: str) -> str:
         mock_response = MagicMock(spec=LlmResponse)
-        mock_response.text = text
+        mock_part = MagicMock()
+        mock_part.text = text
+        mock_response.content = MagicMock()
+        mock_response.content.parts = [mock_part]
         processed = market_after_model_callback(self.mock_ctx, mock_response)
-        return processed.text
+        return processed.content.parts[0].text
 
     # ---------------------------------------------------------
     # 1. Director relationship neutrality

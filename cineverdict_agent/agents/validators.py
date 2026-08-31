@@ -68,20 +68,28 @@ ANALYTICAL_WORDS = {
 # ---------------------------------------------------------------------------
 # Helper Extraction & Parsing
 # ---------------------------------------------------------------------------
+def _get_ctx(ctx):
+    if hasattr(ctx, 'get_invocation_context'):
+        return ctx.get_invocation_context()
+    return ctx
+
 def get_user_text(ctx) -> str:
     """Extracts the latest user prompt from the ADK context."""
-    if not ctx or not hasattr(ctx, 'session'): return ""
-    user_events = [e.output for e in ctx.session.events if getattr(e, 'author', '') == 'user']
+    c = _get_ctx(ctx)
+    if not c or not hasattr(c, 'session'): return ""
+    user_events = [e.output for e in c.session.events if getattr(e, 'author', '') == 'user']
     return user_events[-1] if user_events else ""
 
 def get_director_text(ctx) -> str:
-    if not ctx or not hasattr(ctx, 'session'): return ""
-    evs = [e.output for e in ctx.session.events if getattr(e, 'author', '') == 'director_agent']
+    c = _get_ctx(ctx)
+    if not c or not hasattr(c, 'session'): return ""
+    evs = [e.output for e in c.session.events if getattr(e, 'author', '') == 'director_agent']
     return evs[-1] if evs else ""
 
 def get_research_text(ctx) -> str:
-    if not ctx or not hasattr(ctx, 'session'): return ""
-    evs = [e.output for e in ctx.session.events if getattr(e, 'author', '') == 'research_agent']
+    c = _get_ctx(ctx)
+    if not c or not hasattr(c, 'session'): return ""
+    evs = [e.output for e in c.session.events if getattr(e, 'author', '') == 'research_agent']
     return evs[-1] if evs else ""
 
 def extract_supporting_excerpts(text: str) -> List[str]:

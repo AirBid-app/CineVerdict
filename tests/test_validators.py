@@ -109,6 +109,11 @@ class TestValidators(unittest.TestCase):
         res = neutralize_positive_assumptions(text)
         self.assertIn("Rights/authorization remain to be verified.", res)
 
+        # Test absolute rights presuppositions neutralization
+        text2 = "Review necessary third-party agreements required to depict corporate logos."
+        res2 = neutralize_production_assumptions(text2)
+        self.assertIn("applicable third-party agreements or permissions, if any apply, to depicting", res2)
+
     # ---------------------------------------------------------
     # 2. Research evidence fidelity
     # 3. Current factual verification

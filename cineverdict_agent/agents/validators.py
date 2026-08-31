@@ -331,6 +331,8 @@ def neutralize_production_assumptions(text: str) -> str:
         r"\bdesired\s+access\s+to\s+personnel\s+can\s+be\s+coordinated\b": "unverified desired access to personnel whether coordination",
         r"\bcan\s+be\s+coordinated\b": "whether coordination is possible remains unverified and conditional",
         r"\bcan\s+be\s+structured\b": "remains unverified and conditional",
+        r"\bnecessary\s+third-party\s+agreements\s+required\s+to\s+depict\b": "applicable third-party agreements or permissions, if any apply, to depicting",
+        r"\bagreements\s+required\s+to\s+depict\b": "agreements, if any apply, to depicting",
     }
     for k, v in replacements.items(): text = re.sub(k, v, text, flags=re.IGNORECASE)
     return text

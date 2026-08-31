@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import MagicMock
 import os
 import io
+import json
 from unittest.mock import patch
 import re
 
@@ -267,6 +268,23 @@ class TestValidators(unittest.TestCase):
         self.assertNotIn("SecretCorp", processed)
         self.assertIn("Evidence is insufficient to verify", processed)
         self.assertIn("audience demand remains unverified", processed.lower())
+
+    # ---------------------------------------------------------
+    # Mock Corpus Search Test
+    # ---------------------------------------------------------
+    def test_parallel_mock_corpus(self):
+        """Verifies that the Parallel Mock Corpus mode intercepts search queries correctly."""
+        from cineverdict_agent.tools.parallel_search import parallel_search
+        os.environ["CINEVERDICT_MOCK_SEARCH"] = "1"
+        try:
+            res_str = parallel_search("Aetheris Space Aero-1 timeline")
+            res_dict = json.loads(res_str)
+            self.assertIn("results", res_dict)
+            self.assertEqual(res_dict["search_id"], "mock-aetheris-search-id")
+            first_title = res_dict["results"][0]["title"]
+            self.assertIn("Aetheris Space", first_title)
+        finally:
+            del os.environ["CINEVERDICT_MOCK_SEARCH"]
 
 if __name__ == '__main__':
     unittest.main()

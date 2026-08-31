@@ -78,6 +78,10 @@ class TestValidators(unittest.TestCase):
         res4 = make_schedule_conditional(text4)
         self.assertIn("timelines are unverified and unknown", res4)
 
+        text5 = "Schedule will adapt to potential external launch delays."
+        res5 = make_schedule_conditional(text5)
+        self.assertIn("determine whether and how the schedule adapts to potential external launch delays", res5)
+
     # ---------------------------------------------------------
     # 6. Market audience-demand neutrality
     # ---------------------------------------------------------
@@ -196,6 +200,16 @@ class TestValidators(unittest.TestCase):
         self.assertIn("[UNSUPPORTED]", res)  # 2026 and Long Beach are unsupported
         self.assertNotIn("2026", res)
         self.assertNotIn("Beach", res)
+
+        # Test U.S.-style abbreviation leak prevention
+        text2 = "International regulations restrict non-U.S. persons [E1]."
+        # U.S. is not in allowed words (since only ValidCorp is in E1 excerpt)
+        cleaned = clean_and_validate_hidden_facts(text2, allowed, self.mock_ctx)
+        self.assertIn("[UNSUPPORTED]", cleaned)
+        final = fail_closed_on_unsupported_sentences(cleaned)
+        # Should fail closed on the ENTIRE sentence, leaving absolutely no "persons" leak
+        self.assertIn("Evidence is insufficient to verify this factual proposition.", final)
+        self.assertNotIn("persons", final)
 
     # ---------------------------------------------------------
     # 24. Unsupported factual claims fail closed

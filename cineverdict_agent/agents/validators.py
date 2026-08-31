@@ -203,7 +203,7 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: Set[str], ctx=None
         elif split_res and any(l in label_part.upper() for l in KNOWN_LABELS):
             active_cits = []
             
-        sentences = re.split(r'([.!?]\s+)', body)
+        sentences = re.split(r'(?<!\b[A-Z])(?<!UNSUPPORTED\])([.!?]\s+)', body, flags=re.IGNORECASE)
         merged_sentences = [sentences[i] + (sentences[i+1] if i+1 < len(sentences) else "") for i in range(0, len(sentences), 2) if sentences[i]]
         
         out_sentences = []
@@ -255,7 +255,7 @@ def fail_closed_on_unsupported_sentences(text: str) -> str:
             out_lines.append(line)
             continue
             
-        sentences = re.split(r'([.!?]\s+)', line)
+        sentences = re.split(r'(?<!\b[A-Z])(?<!UNSUPPORTED\])([.!?]\s+)', line, flags=re.IGNORECASE)
         merged = [sentences[i] + (sentences[i+1] if i+1 < len(sentences) else "") for i in range(0, len(sentences), 2) if sentences[i]]
         
         out_merged = []
@@ -356,6 +356,7 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
         r"\bWhether\s+the\s+internal\s+schedule\s+will\s+remain\s+independent\s+of\s+or\s+align\s+with\s+the\s+external\s+schedule\b": "Whether and how the schedules are related remains unknown",
         r"\bDetermine\s+whether\s+to\s+align\s+the\s+schedules\s+or\s+keep\s+them\s+independent\b": "Determine whether any dependency, alignment, independence, coupling, influence exists",
         r"\bmust\s+be\s+treated\s+as\s+independent\b": "timelines are unverified and unknown",
+        r"\b(?:schedule\s+)?will\s+adapt\s+to\s+potential\s+external\s+launch\s+delays\b": "determine whether and how the schedule adapts to potential external launch delays",
     }
     for k, v in replacements.items(): text = re.sub(k, v, text, flags=re.IGNORECASE)
     return text

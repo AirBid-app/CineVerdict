@@ -83,6 +83,10 @@ class TestValidators(unittest.TestCase):
         res5 = make_schedule_conditional(text5)
         self.assertIn("determine whether and how the schedule adapts to potential external launch delays", res5)
 
+        text6 = "Align the internal production schedule with the shifting external launch timeline."
+        res6 = make_schedule_conditional(text6)
+        self.assertIn("determine whether and how the internal production schedule relates to the shifting external launch timeline", res6)
+
     # ---------------------------------------------------------
     # 6. Market audience-demand neutrality
     # ---------------------------------------------------------
@@ -104,6 +108,15 @@ class TestValidators(unittest.TestCase):
         text = "The assumption is that access to the facility can be coordinated."
         res = neutralize_positive_assumptions(text)
         self.assertIn("Access has not been established and remains unverified.", res)
+
+        # Test absolute access / clearances neutralization
+        text2 = "Review formal access agreements and filing clearances."
+        res2 = neutralize_production_assumptions(text2)
+        self.assertIn("formal access agreements, if any apply, and filming clearances", res2)
+
+        text3 = "Investigate the status to secure cooperative rights."
+        res3 = neutralize_production_assumptions(text3)
+        self.assertIn("to determine what cooperative rights, if any, apply", res3)
 
     # ---------------------------------------------------------
     # 7. Market rights/evidence fidelity

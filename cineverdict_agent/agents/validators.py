@@ -333,6 +333,8 @@ def neutralize_production_assumptions(text: str) -> str:
         r"\bcan\s+be\s+structured\b": "remains unverified and conditional",
         r"\bnecessary\s+third-party\s+agreements\s+required\s+to\s+depict\b": "applicable third-party agreements or permissions, if any apply, to depicting",
         r"\bagreements\s+required\s+to\s+depict\b": "agreements, if any apply, to depicting",
+        r"\bformal\s+access\s+agreements\s+and\s+filing\s+clearances\b": "formal access agreements, if any apply, and filming clearances",
+        r"\bto\s+secure\s+cooperative\s+rights\b": "to determine what cooperative rights, if any, apply",
     }
     for k, v in replacements.items(): text = re.sub(k, v, text, flags=re.IGNORECASE)
     return text
@@ -357,6 +359,7 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
         r"\bDetermine\s+whether\s+to\s+align\s+the\s+schedules\s+or\s+keep\s+them\s+independent\b": "Determine whether any dependency, alignment, independence, coupling, influence exists",
         r"\bmust\s+be\s+treated\s+as\s+independent\b": "timelines are unverified and unknown",
         r"\b(?:schedule\s+)?will\s+adapt\s+to\s+potential\s+external\s+launch\s+delays\b": "determine whether and how the schedule adapts to potential external launch delays",
+        r"\balign\s+the\s+internal\s+production\s+schedule\s+with\s+the\s+shifting\s+external\s+launch\s+timeline\b": "determine whether and how the internal production schedule relates to the shifting external launch timeline",
     }
     for k, v in replacements.items(): text = re.sub(k, v, text, flags=re.IGNORECASE)
     return text

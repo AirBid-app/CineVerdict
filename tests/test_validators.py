@@ -272,8 +272,9 @@ class TestValidators(unittest.TestCase):
     # ---------------------------------------------------------
     # Mock Corpus Search Test
     # ---------------------------------------------------------
-    def test_parallel_mock_corpus(self):
-        """Verifies that the Parallel Mock Corpus mode intercepts search queries correctly."""
+    @patch('cineverdict_agent.tools.parallel_search.Parallel')
+    def test_parallel_mock_corpus(self, mock_parallel_class):
+        """Verifies that the Parallel Mock Corpus mode intercepts search queries and bypasses live SDK."""
         from cineverdict_agent.tools.parallel_search import parallel_search
         os.environ["CINEVERDICT_MOCK_SEARCH"] = "1"
         try:
@@ -283,6 +284,8 @@ class TestValidators(unittest.TestCase):
             self.assertEqual(res_dict["search_id"], "mock-aetheris-search-id")
             first_title = res_dict["results"][0]["title"]
             self.assertIn("Aetheris Space", first_title)
+            # Verify live SDK was completely bypassed
+            mock_parallel_class.assert_not_called()
         finally:
             del os.environ["CINEVERDICT_MOCK_SEARCH"]
 

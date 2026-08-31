@@ -91,7 +91,7 @@ def _get_mock_search_results(query: str) -> str:
                 "url": "https://www.aetherisspace-mock.com/updates/aero-1-rescheduled-to-2027",
                 "publish_date": "2026-01-20",
                 "excerpts": [
-                    "Aetheris Space has delayed the launch of its commercial space station until next year, the company announced on Tuesday. Aero-1, which was expected to launch in 2026, will now launch no earlier than Q1 2027—and it could be significantly longer before the station gets its first crew. It could be as early as two weeks after [Aero-1’s launch], and it could be as late as any time within three years, Max Haot told Aerospace News."
+                    "Aetheris Space has delayed the launch of its commercial space station until next year, the company announced on Tuesday. Aero-1, which was expected to launch in 2026, will now launch no earlier than Q1 2027—and it could be significantly longer before the station gets its first crew. It could be as early as two weeks after [Aero-1’s launch], and it could be as late as any time within three years, Julian Vance told Aerospace News."
                 ]
             },
             {
@@ -99,7 +99,7 @@ def _get_mock_search_results(query: str) -> str:
                 "url": "https://www.aetherisspace-mock.com/aero-1",
                 "publish_date": None,
                 "excerpts": [
-                    "Features Two-week missions 45 m³ habitable volume Personal crew quarters 1.1 m domed window Deployable communal table Starlink, engineered by Orion Flight. AERO-1 Launching 2027 * crew: 4 * Diameter: 4.4 m * height: 10.1 m * HABITABLE VOLUME: 45 m³ * PRESSURIZED VOLUME: 80 m³ * mass: 14,600 kg * Power: 13,200 w * orbit: 51.6°, 425 km"
+                    "Features Two-week missions 45 m³ habitable volume Personal crew quarters 1.1 m domed window Deployable communal table OrbitalNet, engineered by Orion Flight. AERO-1 Launching 2027 * crew: 4 * Diameter: 4.4 m * height: 10.1 m * HABITABLE VOLUME: 45 m³ * PRESSURIZED VOLUME: 80 m³ * mass: 14,600 kg * Power: 13,200 w * orbit: 51.6°, 425 km"
                 ]
             },
             {
@@ -107,7 +107,7 @@ def _get_mock_search_results(query: str) -> str:
                 "url": "https://www.aetherisspace-mock.com/updates/aero-1-advances-into-integration-phase",
                 "publish_date": "2026-01-20",
                 "excerpts": [
-                    "Based on the current integration timeline, Aetheris is updating its schedule for Aero-1 to be ready to launch Q1 2027. Aero-1 is contracted to launch on an Orion Flight Nebula-9 rocket from Cape Canaveral, Florida. Aetheris Space fully completed the primary structure for Aero-1 on January 10, 2026. The firm is now starting clean room integration."
+                    "Based on the current integration timeline, Aetheris is updating its schedule for Aero-1 to be ready to launch Q1 2027. Aero-1 is contracted to launch on an Orion Flight Nebula-9 rocket from Ocean View Spaceport. Aetheris Space fully completed the primary structure for Aero-1 on January 10, 2026. The firm is now starting clean room integration."
                 ]
             },
             {
@@ -115,33 +115,33 @@ def _get_mock_search_results(query: str) -> str:
                 "url": "https://www.aetherisspace-mock.com/updates/aero-pathfinder-launched",
                 "publish_date": "2025-11-03",
                 "excerpts": [
-                    "To prove out its technologies and hardware, Aetheris launched its Aero Pathfinder in November 2025 onboard Orion Flight’s Bandwagon-4 rideshare mission. The 500 kg testbed satellite provided verification of the non-human systems on the Aero-1 space station. The spacecraft was deorbited in February 2026."
+                    "To prove out its technologies and hardware, Aetheris launched its Aero Pathfinder in November 2025 onboard Orion Flight’s Vanguard rideshare mission. The 500 kg testbed satellite provided verification of the non-human systems on the Aero-1 space station. The spacecraft was deorbited in February 2026."
                 ]
             }
         ])
 
     # Case 2: Media / Documentaries / Industry Precedents
-    if "documentary" in q or "netflix" in q or "media" in q or "precedent" in q:
+    if "documentary" in q or "media" in q or "precedent" in q or "stream" in q:
         mock_results.extend([
             {
-                "title": "Time Studios and Netflix Partner for Countdown: Inspiration4 Mission to Space",
-                "url": "https://en.wikipedia.org/wiki/Countdown%3A_Inspiration4_Mission_to_Space",
+                "title": "CineCore Studios Partners for Horizon: The Orion Flight Mission",
+                "url": "https://www.horizon-documentary-mock.com/announcement",
                 "publish_date": "2021-08-03",
                 "excerpts": [
-                    "Countdown: Inspiration4 Mission to Space is a 2021 American five-part docuseries jointly produced by Netflix and Time Studios to chronicle, in near real-time, the successful Orion Flight Inspiration4 orbital mission which occurred in September 2021. Shortly after the announcement of Inspiration4, Time revealed it had secured the competitive documentary rights, giving it exclusive access to the groundbreaking mission."
+                    "Horizon: The Orion Flight Mission is a five-part docuseries jointly produced by StreamPrime and CineCore Studios to chronicle, in near real-time, the successful Orion Flight orbital mission. Shortly after the announcement, CineCore revealed it had secured the competitive documentary rights, giving it exclusive access to the groundbreaking mission."
                 ]
             },
             {
-                "title": "NASA Media Accreditation and Access Policies for Commercial Missions",
-                "url": "https://www.nasa.gov/news-release/nasa-opens-media-accreditation-for-next-mission-launch",
+                "title": "Aerospace Authority Media Accreditation and Access Policies",
+                "url": "https://www.aerospace-authority-mock.gov/news-release/media-accreditation",
                 "publish_date": "2023-07-26",
                 "excerpts": [
-                    "To be given NASA media credentials, individuals from these organizations must be full or part-time professional media. All accredited media also must agree to abide by safety and security rules established by the NASA location they are visiting. International journalists must submit a scanned copy of their I visa and passport. Green card holders must submit a scanned copy of their card."
+                    "To be given Aerospace Authority media credentials, individuals from these organizations must be full or part-time professional media. All accredited media also must agree to abide by safety and security rules established by the location they are visiting. International journalists must submit a scanned copy of their I visa and passport."
                 ]
             },
             {
                 "title": "Legal and Insurance Protections for Commercial Documentary Productions",
-                "url": "https://www.documentary.org/feature/legal-faq-dont-roll-dice-insure-your-production",
+                "url": "https://www.documentary-guidance-mock.org/feature/legal-faq-insure-your-production",
                 "publish_date": "2026-05-19",
                 "excerpts": [
                     "DICE—short for documentary, industrial, commercial, and educational insurance—is the policy that protects the production itself. Unlike liability insurance, which protects against harm to others, DICE is primarily concerned with damage, delay, and disruption to the project. It includes costs for delays and re-shooting due to inclement weather, equipment failure, or set damage."
@@ -149,20 +149,20 @@ def _get_mock_search_results(query: str) -> str:
             }
         ])
 
-    # Case 3: Compliance & Export Controls (ITAR/EAR)
-    if "regulatory" in q or "itar" in q or "export" in q or "compliance" in q:
+    # Case 3: Compliance & Export Controls
+    if "regulatory" in q or "export" in q or "compliance" in q or "control" in q:
         mock_results.extend([
             {
-                "title": "Introduction to U.S. Export Controls for the Commercial Space Industry",
-                "url": "https://www.faa.gov/about/office_org/headquarters_offices/ast/media/Intro_to_US_Export_Controls.pdf",
+                "title": "Introduction to Export Controls for the Commercial Space Industry",
+                "url": "https://www.export-control-authority-mock.gov/media/Intro_to_Export_Controls.pdf",
                 "publish_date": "2008-10-30",
                 "excerpts": [
-                    "The ITAR defines a defense article as either: A physical object or technical information relating to the object. Deemed exports can include communication of blueprints, photographs, and drawings, and visual inspections. Under ITAR §120.11, Public domain information is not considered technical data and is not subject to any restriction or licensing requirement."
+                    "The Export Defense Regulations define a defense article as either: A physical object or technical information relating to the object. Deemed exports can include communication of blueprints, photographs, and drawings, and visual inspections. Public domain information is not considered technical data and is not subject to any restriction or licensing requirement."
                 ]
             },
             {
                 "title": "Aetheris Space Job Posting: Export Compliance Specialist",
-                "url": "https://job-boards.greenhouse.io/aetheris/jobs/4554839006",
+                "url": "https://careers.aetherisspace-mock.com/jobs/4554839006",
                 "publish_date": None,
                 "excerpts": [
                     "The person hired will have access to information and items subject to U.S. export controls, and therefore, must either be a U.S. person as defined by 22 C.F.R. § 120.62 or otherwise be considered for deemed export licensing. Aetheris is looking for a Regulatory Compliance Specialist, reporting to an Associate General Counsel within the Legal team, to support the development and implementation of compliance measures related to U.S. export controls ITAR/EAR."

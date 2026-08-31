@@ -86,10 +86,16 @@ def get_research_text(ctx) -> str:
 
 def extract_supporting_excerpts(text: str) -> List[str]:
     """Finds all 'Supporting Excerpt: "..."' blocks in the text."""
-    return re.findall(r'Supporting Excerpt:\s*(.*?)(?:\n\s*(?:[A-Z0-9]+[ \-:]|$))', text + '\nE999:', flags=re.DOTALL | re.IGNORECASE)
+    excerpts = re.findall(r'Supporting Excerpt:\s*"(.*?)"', text, flags=re.DOTALL | re.IGNORECASE)
+    if not excerpts:
+        excerpts = re.findall(r'Supporting Excerpt:\s*(.*?)(?:\n\s*(?:[A-Z0-9]+[ \-:]|$))', text + '\nE999:', flags=re.DOTALL | re.IGNORECASE)
+    return [ex.strip().strip('"\'') for ex in excerpts if ex.strip()]
 
 def extract_claims(text: str) -> List[str]:
-    return re.findall(r'Claim:\s*(.*?)(?:\n\s*(?:Verification|Source|Supporting|$))', text, flags=re.DOTALL | re.IGNORECASE)
+    claims = re.findall(r'Claim:\s*"(.*?)"', text, flags=re.DOTALL | re.IGNORECASE)
+    if not claims:
+        claims = re.findall(r'Claim:\s*(.*?)(?:\n\s*(?:Verification|Source|Supporting|$))', text, flags=re.DOTALL | re.IGNORECASE)
+    return [c.strip().strip('"\'') for c in claims if c.strip()]
 
 def parse_cited_evidence_ids(text: str) -> List[str]:
     matches = re.findall(r'\bE(\d+)\b', text, flags=re.IGNORECASE)
@@ -97,24 +103,27 @@ def parse_cited_evidence_ids(text: str) -> List[str]:
 
 def get_evidence_excerpts_map(text: str) -> Dict[str, List[str]]:
     mapping = {}
-    parts = re.split(r'\b(E\d+)\s*(?:[\u2014\u2013\-:])', text, flags=re.IGNORECASE)
-    for i in range(1, len(parts), 2):
-        key = parts[i].lower().strip()
-        body = parts[i+1]
+    headers = list(re.finditer(r'(?:^|\n)[ \t]*(?:#+\s*|[-*+\d.]+\s*)?(E\d+)\b', text, flags=re.IGNORECASE))
+    for idx, match in enumerate(headers):
+        key = match.group(1).lower().strip()
+        start = match.end()
+        end = headers[idx+1].start() if idx+1 < len(headers) else len(text)
+        body = text[start:end]
         mapping.setdefault(key, []).extend(extract_supporting_excerpts(body))
     return mapping
 
 def get_evidence_claims_map(text: str) -> Dict[str, List[str]]:
     mapping = {}
-    parts = re.split(r'\b(E\d+)\s*(?:[\u2014\u2013\-:])', text, flags=re.IGNORECASE)
-    for i in range(1, len(parts), 2):
-        key = parts[i].lower().strip()
-        body = parts[i+1]
+    headers = list(re.finditer(r'(?:^|\n)[ \t]*(?:#+\s*|[-*+\d.]+\s*)?(E\d+)\b', text, flags=re.IGNORECASE))
+    for idx, match in enumerate(headers):
+        key = match.group(1).lower().strip()
+        start = match.end()
+        end = headers[idx+1].start() if idx+1 < len(headers) else len(text)
+        body = text[start:end]
         mapping.setdefault(key, []).extend(extract_claims(body))
     return mapping
 
 def get_allowed_words(ctx) -> Set[str]:
-    """Builds the global allowed words set based on user input, director plan, and ALL evidence."""
     allowed = set(COMMON_STOP_WORDS) | set(SYSTEM_ALLOWED) | set(ANALYTICAL_WORDS)
     sources = [get_user_text(ctx), get_director_text(ctx), get_research_text(ctx)]
     for src in sources:
@@ -122,7 +131,6 @@ def get_allowed_words(ctx) -> Set[str]:
         allowed.update(words)
         for w in words:
             if "-" in w: allowed.update(w.split("-"))
-    # Always allow Ex citations
     for i in range(1, 100): allowed.add(f"e{i}")
     return allowed
 
@@ -134,7 +142,6 @@ def split_structural_line(line: str) -> Optional[Tuple[str, str]]:
     )
     m = pattern.match(line)
     if m: return m.group(1), m.group(2)
-    # Generic bold headers or E# headers
     m_bold = re.match(r"^([ \t]*(?:#+\s*)?(?:-\s*|\*\s*|\d+\.\s*)?\*\*[^\*]+\*\*(?:\s*(?::|—|-)\s*|\s*$))(.*)$", line)
     if m_bold: return m_bold.group(1), m_bold.group(2)
     m_dr = re.match(r"^([ \t]*(?:#+\s*)?(?:-\s*|\*\s*|\d+\.\s*)?DECISIVE REASON \d+(?:\s*(?::|—|-)\s*|\s*$))(.*)$", line, re.IGNORECASE)
@@ -151,6 +158,16 @@ def classify_sentence_role(sentence: str) -> str:
     if any(x in s for x in ["unverified", "unknown", "unresolved", "missing", "lack of", "remains", "whether"]): return "uncertainty"
     if any(x in s for x in ["assume", "assumption", "hypothesis", "viability", "feasibility", "implication"]): return "analytical_assumption"
     return "factual"
+
+def _is_word_authorized(word: str, allowed_set: Set[str]) -> bool:
+    wl = word.lower()
+    if wl in allowed_set: return True
+    # Standard morphology adjustments
+    for suffix in ["es", "s", "ed", "ing"]:
+        if wl.endswith(suffix):
+            stem = wl[:-len(suffix)]
+            if stem in allowed_set: return True
+    return False
 
 # ---------------------------------------------------------------------------
 # Content Neutralization
@@ -173,7 +190,6 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: Set[str], ctx=None
         split_res = split_structural_line(line)
         label_part, body = split_res if split_res else ("", line)
         
-        # Track active evidence scope
         if split_res and any(l in label_part.upper() for l in ["VERIFIED EVIDENCE", "SECONDARY EVIDENCE", "CONFLICTING EVIDENCE"]):
             active_cits = parse_cited_evidence_ids(label_part)
         elif split_res and any(l in label_part.upper() for l in KNOWN_LABELS):
@@ -186,14 +202,12 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: Set[str], ctx=None
         for sent in merged_sentences:
             line_cits = parse_cited_evidence_ids(label_part + sent) or active_cits
             
-            # Build local allowed words
             local_allowed = set(allowed_words)
             if ev_map and line_cits:
                 local_allowed = set(COMMON_STOP_WORDS) | set(SYSTEM_ALLOWED) | set(ANALYTICAL_WORDS)
                 for cid in line_cits:
                     if cid in ev_map:
                         for exc in ev_map[cid]: local_allowed.update(re.findall(r"[a-zA-Z0-9\-]+", exc.lower()))
-                # Add context words
                 if ctx:
                     local_allowed.update(re.findall(r"[a-zA-Z0-9\-]+", get_director_text(ctx).lower()))
                     local_allowed.update(re.findall(r"[a-zA-Z0-9\-]+", get_user_text(ctx).lower()))
@@ -204,7 +218,7 @@ def clean_and_validate_hidden_facts(text: str, allowed_words: Set[str], ctx=None
             for t in tokens:
                 tl = t.lower()
                 if re.match(r"^e\d+$", tl): continue
-                if tl not in local_allowed and not any(tl.startswith(a) for a in local_allowed):
+                if not _is_word_authorized(tl, local_allowed):
                     if role == "factual" or (tl not in ANALYTICAL_WORDS):
                         unauthorized.append(t)
             
@@ -227,8 +241,10 @@ def fail_closed_on_unsupported_sentences(text: str) -> str:
     out_lines = []
     for line in text.split("\n"):
         if not line.strip() or "[UNSUPPORTED]" not in line:
-            if not re.match(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))?\[Factual proposition unverified.*?\]$', line, re.IGNORECASE):
-                out_lines.append(line)
+            line_stripped = re.sub(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', '', line).strip()
+            if re.match(r'^\[Factual proposition unverified.*?\]$', line_stripped, re.IGNORECASE) or "proposition unverified due to missing evidence" in line_stripped.lower():
+                continue
+            out_lines.append(line)
             continue
             
         sentences = re.split(r'([.!?]\s+)', line)
@@ -240,7 +256,6 @@ def fail_closed_on_unsupported_sentences(text: str) -> str:
                 prefix_match = re.match(r'^(\s*(?:-\s+|\*\s+|\d+\.\s+))', s)
                 prefix = prefix_match.group(1) if prefix_match else ""
                 
-                # Check clause rescue
                 preserved = False
                 for conj in [", but ", ", however, ", "; however, ", ", and "]:
                     if conj in s:
@@ -330,6 +345,7 @@ def make_schedule_conditional(text: str, ctx=None) -> str:
         r"\bAssume\s+no\s+dependency\s+unless\s+evidence\s+establishes\s+one\b": "The relationship remains unverified and unknown",
         r"\bWhether\s+the\s+internal\s+schedule\s+will\s+remain\s+independent\s+of\s+or\s+align\s+with\s+the\s+external\s+schedule\b": "Whether and how the schedules are related remains unknown",
         r"\bDetermine\s+whether\s+to\s+align\s+the\s+schedules\s+or\s+keep\s+them\s+independent\b": "Determine whether any dependency, alignment, independence, coupling, influence exists",
+        r"\bmust\s+be\s+treated\s+as\s+independent\b": "timelines are unverified and unknown",
     }
     for k, v in replacements.items(): text = re.sub(k, v, text, flags=re.IGNORECASE)
     return text

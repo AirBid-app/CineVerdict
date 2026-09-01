@@ -328,9 +328,9 @@ def neutralize_audience_assumptions(text: str) -> str:
 def _is_requirement_evidence_supported(sent: str, concept: str, ctx=None) -> bool:
     """Verifies if a specific required concept (e.g., 'insurance', 'clearance', 'agreement')
     is semantically supported as a mandatory requirement by the cited evidence excerpts.
-    To be supported, the cited raw excerpt must contain the concept word, must contain a
-    positive obligation marker (required, must, necessary, etc.), and must NOT negate or
-    conditionalize it (optional, not required, etc.).
+    To be supported, the cited raw excerpt must contain the concept word and an obligation
+    word (required, must, mandatory, etc.) in the SAME sentence, without any negation
+    (not, no, never) or conditional qualifiers (may, might, could, potentially, depending, optional).
     """
     if not ctx: return False
     cits = parse_cited_evidence_ids(sent)
@@ -340,6 +340,8 @@ def _is_requirement_evidence_supported(sent: str, concept: str, ctx=None) -> boo
     if not ev_map: return False
     
     obligation_words = {"required", "must", "mandatory", "necessary", "shall", "obligated", "contracted"}
+    negation_words = {"not", "no", "never", "unspecified", "unverified", "unknown"}
+    conditional_words = {"may", "might", "could", "sometimes", "potentially", "depending", "optional", "where applicable", "subject to", "voluntary", "discretionary"}
     
     concept_lower = concept.lower()
     
@@ -347,20 +349,20 @@ def _is_requirement_evidence_supported(sent: str, concept: str, ctx=None) -> boo
         if cid in ev_map:
             for exc in ev_map[cid]:
                 exc_lower = exc.lower()
-                if concept_lower in exc_lower:
-                    words = set(re.findall(r"[a-zA-Z0-9\-]+", exc_lower))
-                    if words & obligation_words:
-                        has_negation = False
-                        if "not" in words or "no" in words:
-                            if re.search(r"\b(?:not|no|never)\s+(?:[a-z]+\s+){0,3}(?:required|mandatory|necessary|must|shall|obligated)\b", exc_lower):
-                                has_negation = True
-                        if any(nw in words for nw in ["optional", "unspecified", "unverified", "unknown"]):
-                            if re.search(r"\b(?:optional|unspecified|unverified|unknown)\s+(?:[a-z]+\s+){0,3}" + re.escape(concept_lower) + r"\b", exc_lower) or \
-                               re.search(r"\b" + re.escape(concept_lower) + r"\s+(?:[a-z]+\s+){0,3}(?:is\s+)?(?:optional|unspecified|unverified|unknown)\b", exc_lower):
-                                has_negation = True
-                        
-                        if not has_negation:
-                            return True
+                # Split excerpt into individual sentences to enforce sentence-level semantic locality
+                sentences = re.split(r'([.!?]\s+)', exc_lower)
+                merged = [sentences[i] + (sentences[i+1] if i+1 < len(sentences) else "") for i in range(0, len(sentences), 2) if sentences[i]]
+                
+                for s in merged:
+                    if concept_lower in s:
+                        words = set(re.findall(r"[a-zA-Z0-9\-]+", s))
+                        # If there is a positive obligation word in the same sentence
+                        if words & obligation_words:
+                            # Verify NO negation or conditional words in the same sentence
+                            if not (words & negation_words) and not (words & conditional_words):
+                                # Double check sub-phrases like "subject to" or "depending on"
+                                if not any(cw in s for cw in ["subject to", "depending on", "where applicable"]):
+                                    return True
     return False
 
 def neutralize_production_assumptions(text: str, ctx=None) -> str:

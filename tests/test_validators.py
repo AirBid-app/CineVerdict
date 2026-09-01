@@ -127,17 +127,36 @@ class TestValidators(unittest.TestCase):
         res5 = neutralize_production_assumptions(text5)
         self.assertIn("agreements, if any apply, before production", res5)
 
-        # Test Supported Case: Grounded factual requirement survives untouched! (Case A / F)
+        # Test Supported Case: Grounded factual requirement survives untouched! (Case A / F / Case 3)
         self._add_event("research_agent", "E1 — Claim: Valid.\nSupporting Excerpt: \"The regulatory clearances and insurance policies are required.\"")
         text_supported = "The regulatory clearances and insurance policies required to film proprietary technologies [E1]."
         res_supported = neutralize_production_assumptions(text_supported, self.mock_ctx)
         self.assertEqual(res_supported, text_supported)
 
-        # Test Negated Case: Excerpt says NOT required -> assertion must NOT survive (Case B)
+        # Test Negated Case: Excerpt says NOT required -> assertion must NOT survive (Case B / Existing)
         self._add_event("research_agent", "E2 — Claim: Optional.\nSupporting Excerpt: \"The regulatory clearances and insurance policies are not required.\"")
         text_negated = "The regulatory clearances and insurance policies required to film proprietary technologies [E2]."
         res_negated = neutralize_production_assumptions(text_negated, self.mock_ctx)
         self.assertIn("regulatory clearances and insurance policies, if any apply,", res_negated)
+
+        # Test Case 1: Unrelated Obligation in Same Excerpt -> assertion must NOT survive
+        self._add_event("research_agent", "E100 — Claim: Split.\nSupporting Excerpt: \"Insurance options are available. Filming agreements are required.\"")
+        text_unrelated = "The insurance policies required to film proprietary technologies [E100]."
+        res_unrelated = neutralize_production_assumptions(text_unrelated, self.mock_ctx)
+        # Even though "required" is in E100, it applies to "agreements", not "insurance", so it is neutralized!
+        self.assertIn("policies, if any apply, to", res_unrelated)
+
+        # Test Case 2: Conditional Requirement (may, depending on, etc.) -> assertion must NOT survive
+        self._add_event("research_agent", "E101 — Claim: Conditional.\nSupporting Excerpt: \"Insurance may be required depending on jurisdiction.\"")
+        text_conditional = "The insurance policies required to film proprietary technologies [E101]."
+        res_conditional = neutralize_production_assumptions(text_conditional, self.mock_ctx)
+        self.assertIn("policies, if any apply, to", res_conditional)
+
+        # Test Case 4: Different Concept Requirement -> assertion must NOT survive
+        self._add_event("research_agent", "E102 — Claim: Clearance.\nSupporting Excerpt: \"Insurance is available. Security clearance is mandatory.\"")
+        text_diff_concept = "The insurance policies required to film proprietary technologies [E102]."
+        res_diff_concept = neutralize_production_assumptions(text_diff_concept, self.mock_ctx)
+        self.assertIn("policies, if any apply, to", res_diff_concept)
 
         # Test Uncertain Case: Excerpt says optional/unverified -> assertion must NOT survive (Case C)
         self._add_event("research_agent", "E3 — Claim: Optional.\nSupporting Excerpt: \"The insurance policies are completely optional.\"")

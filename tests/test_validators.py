@@ -110,13 +110,22 @@ class TestValidators(unittest.TestCase):
         self.assertIn("Access has not been established and remains unverified.", res)
 
         # Test absolute access / clearances neutralization
-        text2 = "Review formal access agreements and filing clearances."
+        text2 = "Review formal access agreements and filming clearances."
         res2 = neutralize_production_assumptions(text2)
         self.assertIn("formal access agreements, if any apply, and filming clearances", res2)
 
         text3 = "Investigate the status to secure cooperative rights."
         res3 = neutralize_production_assumptions(text3)
         self.assertIn("to determine what cooperative rights, if any, apply", res3)
+
+        # Test robust clearances, insurance, and policy neutralization
+        text4 = "The regulatory clearances and insurance policies required to film proprietary technologies."
+        res4 = neutralize_production_assumptions(text4)
+        self.assertIn("regulatory clearances and insurance policies, if any apply,", res4)
+
+        text5 = "Review agreements required before production starts."
+        res5 = neutralize_production_assumptions(text5)
+        self.assertIn("agreements, if any apply, before production", res5)
 
     # ---------------------------------------------------------
     # 7. Market rights/evidence fidelity

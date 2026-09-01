@@ -333,8 +333,13 @@ def neutralize_production_assumptions(text: str) -> str:
         r"\bcan\s+be\s+structured\b": "remains unverified and conditional",
         r"\bnecessary\s+third-party\s+agreements\s+required\s+to\s+depict\b": "applicable third-party agreements or permissions, if any apply, to depicting",
         r"\bagreements\s+required\s+to\s+depict\b": "agreements, if any apply, to depicting",
-        r"\bformal\s+access\s+agreements\s+and\s+filing\s+clearances\b": "formal access agreements, if any apply, and filming clearances",
+        r"\bformal\s+access\s+agreements\s+and\s+filming\s+clearances\b": "formal access agreements, if any apply, and filming clearances",
         r"\bto\s+secure\s+cooperative\s+rights\b": "to determine what cooperative rights, if any, apply",
+        r"\bregulatory\s+clearances\s+and\s+insurance\s+policies\s+required\b": "regulatory clearances and insurance policies, if any apply,",
+        r"\bclearances\s+required\s+to\s+film\b": "clearances, if any are required, to film",
+        r"\binsurance\s+required\s+to\s+film\b": "insurance, if any is required, to film",
+        r"\bpolicies\s+required\s+to\b": "policies, if any apply, to",
+        r"\bagreements\s+required\s+before\s+production\b": "agreements, if any apply, before production",
     }
     for k, v in replacements.items(): text = re.sub(k, v, text, flags=re.IGNORECASE)
     return text

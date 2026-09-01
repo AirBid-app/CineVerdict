@@ -325,24 +325,71 @@ def neutralize_audience_assumptions(text: str) -> str:
     for k, v in replacements.items(): text = re.sub(k, v, text, flags=re.IGNORECASE)
     return text
 
-def neutralize_production_assumptions(text: str) -> str:
-    replacements = {
-        r"\bformat\s+can\s+be\s+structured\b": "format whether a format can be structured",
-        r"\bdesired\s+access\s+to\s+personnel\s+can\s+be\s+coordinated\b": "unverified desired access to personnel whether coordination",
-        r"\bcan\s+be\s+coordinated\b": "whether coordination is possible remains unverified and conditional",
-        r"\bcan\s+be\s+structured\b": "remains unverified and conditional",
-        r"\bnecessary\s+third-party\s+agreements\s+required\s+to\s+depict\b": "applicable third-party agreements or permissions, if any apply, to depicting",
-        r"\bagreements\s+required\s+to\s+depict\b": "agreements, if any apply, to depicting",
-        r"\bformal\s+access\s+agreements\s+and\s+filming\s+clearances\b": "formal access agreements, if any apply, and filming clearances",
-        r"\bto\s+secure\s+cooperative\s+rights\b": "to determine what cooperative rights, if any, apply",
-        r"\bregulatory\s+clearances\s+and\s+insurance\s+policies\s+required\b": "regulatory clearances and insurance policies, if any apply,",
-        r"\bclearances\s+required\s+to\s+film\b": "clearances, if any are required, to film",
-        r"\binsurance\s+required\s+to\s+film\b": "insurance, if any is required, to film",
-        r"\bpolicies\s+required\s+to\b": "policies, if any apply, to",
-        r"\bagreements\s+required\s+before\s+production\b": "agreements, if any apply, before production",
-    }
-    for k, v in replacements.items(): text = re.sub(k, v, text, flags=re.IGNORECASE)
-    return text
+def _should_neutralize_production(sent: str, ctx=None) -> bool:
+    """Returns True if the sentence's requirements (e.g. required, clearances, insurance, agreements)
+    are unsupported by the cited evidence excerpts and should therefore be neutralized.
+    If the cited evidence raw excerpt explicitly contains these requirement words, we return False
+    so the grounded factual proposition survives intact.
+    """
+    if not ctx: return True
+    line_cits = parse_cited_evidence_ids(sent)
+    if not line_cits: return True # No citations -> always neutralize
+    
+    ev_map = get_evidence_excerpts_map(get_research_text(ctx))
+    if not ev_map: return True
+    
+    supported_keywords = {"required", "must", "mandatory", "necessary", "agreement", "agreements", "clearance", "clearances", "insurance", "policies", "policy"}
+    
+    for cid in line_cits:
+        if cid in ev_map:
+            for exc in ev_map[cid]:
+                exc_words = set(re.findall(r"[a-zA-Z0-9\-]+", exc.lower()))
+                if exc_words & supported_keywords:
+                    return False
+    return True
+
+def neutralize_production_assumptions(text: str, ctx=None) -> str:
+    lines = text.split("\n")
+    out_lines = []
+    for line in lines:
+        if not line.strip():
+            out_lines.append(line)
+            continue
+            
+        split_res = split_structural_line(line)
+        label_part, body = split_res if split_res else ("", line)
+        
+        sentences = re.split(r'(?<!\b[A-Z])(?<!UNSUPPORTED\])([.!?]\s+)', body, flags=re.IGNORECASE)
+        merged_sentences = [sentences[i] + (sentences[i+1] if i+1 < len(sentences) else "") for i in range(0, len(sentences), 2) if sentences[i]]
+        
+        out_sentences = []
+        for sent in merged_sentences:
+            if _should_neutralize_production(sent, ctx):
+                replacements = {
+                    r"\bformat\s+can\s+be\s+structured\b": "format whether a format can be structured",
+                    r"\bdesired\s+access\s+to\s+personnel\s+can\s+be\s+coordinated\b": "unverified desired access to personnel whether coordination",
+                    r"\bcan\s+be\s+coordinated\b": "whether coordination is possible remains unverified and conditional",
+                    r"\bcan\s+be\s+structured\b": "remains unverified and conditional",
+                    r"\bnecessary\s+third-party\s+agreements\s+required\s+to\s+depict\b": "applicable third-party agreements or permissions, if any apply, to depicting",
+                    r"\bagreements\s+required\s+to\s+depict\b": "agreements, if any apply, to depicting",
+                    r"\bformal\s+access\s+agreements\s+and\s+filing\s+clearances\b": "formal access agreements, if any apply, and filming clearances",
+                    r"\bformal\s+access\s+agreements\s+and\s+filming\s+clearances\b": "formal access agreements, if any apply, and filming clearances, if any are required,",
+                    r"\bto\s+secure\s+cooperative\s+rights\b": "to determine what cooperative rights, if any, apply",
+                    r"\bregulatory\s+clearances\s+and\s+insurance\s+policies\s+required\b": "regulatory clearances and insurance policies, if any apply,",
+                    r"\bclearances\s+required\s+to\s+film\b": "clearances, if any are required, to film",
+                    r"\binsurance\s+required\s+to\s+film\b": "insurance, if any is required, to film",
+                    r"\bpolicies\s+required\s+to\b": "policies, if any apply, to",
+                    r"\bagreements\s+required\s+before\s+production\b": "agreements, if any apply, before production",
+                }
+                sent_neutralized = sent
+                for k, v in replacements.items():
+                    sent_neutralized = re.sub(k, v, sent_neutralized, flags=re.IGNORECASE)
+                out_sentences.append(sent_neutralized)
+            else:
+                out_sentences.append(sent)
+                
+        out_lines.append(label_part + "".join(out_sentences))
+    return "\n".join(out_lines)
 
 def neutralize_evaluative_words(text: str, allowed: Set[str]) -> str:
     if "successful" in text.lower() and "successful" not in allowed:
@@ -395,7 +442,7 @@ def _apply_validators(ctx, response: LlmResponse) -> LlmResponse:
             t = fail_closed_on_unsupported_sentences(t)
             t = neutralize_positive_assumptions(t)
             t = neutralize_audience_assumptions(t)
-            t = neutralize_production_assumptions(t)
+            t = neutralize_production_assumptions(t, ctx)
             t = neutralize_evaluative_words(t, allowed)
             t = make_schedule_conditional(t, ctx)
             part.text = t

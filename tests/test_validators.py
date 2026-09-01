@@ -109,16 +109,16 @@ class TestValidators(unittest.TestCase):
         res = neutralize_positive_assumptions(text)
         self.assertIn("Access has not been established and remains unverified.", res)
 
-        # Test absolute access / clearances neutralization
+        # Test absolute access / clearances neutralization (Unsupported Case)
         text2 = "Review formal access agreements and filming clearances."
         res2 = neutralize_production_assumptions(text2)
-        self.assertIn("formal access agreements, if any apply, and filming clearances", res2)
+        self.assertIn("formal access agreements, if any apply, and filming clearances, if any are required,", res2)
 
         text3 = "Investigate the status to secure cooperative rights."
         res3 = neutralize_production_assumptions(text3)
         self.assertIn("to determine what cooperative rights, if any, apply", res3)
 
-        # Test robust clearances, insurance, and policy neutralization
+        # Test robust clearances, insurance, and policy neutralization (Unsupported Case)
         text4 = "The regulatory clearances and insurance policies required to film proprietary technologies."
         res4 = neutralize_production_assumptions(text4)
         self.assertIn("regulatory clearances and insurance policies, if any apply,", res4)
@@ -126,6 +126,14 @@ class TestValidators(unittest.TestCase):
         text5 = "Review agreements required before production starts."
         res5 = neutralize_production_assumptions(text5)
         self.assertIn("agreements, if any apply, before production", res5)
+
+        # Test Supported Case: Grounded factual requirement survives untouched!
+        self._add_event("research_agent", "E1 — Claim: Valid.\nSupporting Excerpt: \"The regulatory clearances and insurance policies are required.\"")
+        
+        # When E1 explicitly contains the requirement words, neutralize_production_assumptions preserves them
+        text_supported = "The regulatory clearances and insurance policies required to film proprietary technologies [E1]."
+        res_supported = neutralize_production_assumptions(text_supported, self.mock_ctx)
+        self.assertEqual(res_supported, text_supported)
 
     # ---------------------------------------------------------
     # 7. Market rights/evidence fidelity

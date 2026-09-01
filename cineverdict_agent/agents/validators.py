@@ -325,28 +325,43 @@ def neutralize_audience_assumptions(text: str) -> str:
     for k, v in replacements.items(): text = re.sub(k, v, text, flags=re.IGNORECASE)
     return text
 
-def _should_neutralize_production(sent: str, ctx=None) -> bool:
-    """Returns True if the sentence's requirements (e.g. required, clearances, insurance, agreements)
-    are unsupported by the cited evidence excerpts and should therefore be neutralized.
-    If the cited evidence raw excerpt explicitly contains these requirement words, we return False
-    so the grounded factual proposition survives intact.
+def _is_requirement_evidence_supported(sent: str, concept: str, ctx=None) -> bool:
+    """Verifies if a specific required concept (e.g., 'insurance', 'clearance', 'agreement')
+    is semantically supported as a mandatory requirement by the cited evidence excerpts.
+    To be supported, the cited raw excerpt must contain the concept word, must contain a
+    positive obligation marker (required, must, necessary, etc.), and must NOT negate or
+    conditionalize it (optional, not required, etc.).
     """
-    if not ctx: return True
-    line_cits = parse_cited_evidence_ids(sent)
-    if not line_cits: return True # No citations -> always neutralize
+    if not ctx: return False
+    cits = parse_cited_evidence_ids(sent)
+    if not cits: return False
     
     ev_map = get_evidence_excerpts_map(get_research_text(ctx))
-    if not ev_map: return True
+    if not ev_map: return False
     
-    supported_keywords = {"required", "must", "mandatory", "necessary", "agreement", "agreements", "clearance", "clearances", "insurance", "policies", "policy"}
+    obligation_words = {"required", "must", "mandatory", "necessary", "shall", "obligated", "contracted"}
     
-    for cid in line_cits:
+    concept_lower = concept.lower()
+    
+    for cid in cits:
         if cid in ev_map:
             for exc in ev_map[cid]:
-                exc_words = set(re.findall(r"[a-zA-Z0-9\-]+", exc.lower()))
-                if exc_words & supported_keywords:
-                    return False
-    return True
+                exc_lower = exc.lower()
+                if concept_lower in exc_lower:
+                    words = set(re.findall(r"[a-zA-Z0-9\-]+", exc_lower))
+                    if words & obligation_words:
+                        has_negation = False
+                        if "not" in words or "no" in words:
+                            if re.search(r"\b(?:not|no|never)\s+(?:[a-z]+\s+){0,3}(?:required|mandatory|necessary|must|shall|obligated)\b", exc_lower):
+                                has_negation = True
+                        if any(nw in words for nw in ["optional", "unspecified", "unverified", "unknown"]):
+                            if re.search(r"\b(?:optional|unspecified|unverified|unknown)\s+(?:[a-z]+\s+){0,3}" + re.escape(concept_lower) + r"\b", exc_lower) or \
+                               re.search(r"\b" + re.escape(concept_lower) + r"\s+(?:[a-z]+\s+){0,3}(?:is\s+)?(?:optional|unspecified|unverified|unknown)\b", exc_lower):
+                                has_negation = True
+                        
+                        if not has_negation:
+                            return True
+    return False
 
 def neutralize_production_assumptions(text: str, ctx=None) -> str:
     lines = text.split("\n")
@@ -364,30 +379,45 @@ def neutralize_production_assumptions(text: str, ctx=None) -> str:
         
         out_sentences = []
         for sent in merged_sentences:
-            if _should_neutralize_production(sent, ctx):
-                replacements = {
-                    r"\bformat\s+can\s+be\s+structured\b": "format whether a format can be structured",
-                    r"\bdesired\s+access\s+to\s+personnel\s+can\s+be\s+coordinated\b": "unverified desired access to personnel whether coordination",
-                    r"\bcan\s+be\s+coordinated\b": "whether coordination is possible remains unverified and conditional",
-                    r"\bcan\s+be\s+structured\b": "remains unverified and conditional",
-                    r"\bnecessary\s+third-party\s+agreements\s+required\s+to\s+depict\b": "applicable third-party agreements or permissions, if any apply, to depicting",
-                    r"\bagreements\s+required\s+to\s+depict\b": "agreements, if any apply, to depicting",
-                    r"\bformal\s+access\s+agreements\s+and\s+filing\s+clearances\b": "formal access agreements, if any apply, and filming clearances",
-                    r"\bformal\s+access\s+agreements\s+and\s+filming\s+clearances\b": "formal access agreements, if any apply, and filming clearances, if any are required,",
-                    r"\bto\s+secure\s+cooperative\s+rights\b": "to determine what cooperative rights, if any, apply",
-                    r"\bregulatory\s+clearances\s+and\s+insurance\s+policies\s+required\b": "regulatory clearances and insurance policies, if any apply,",
-                    r"\bclearances\s+required\s+to\s+film\b": "clearances, if any are required, to film",
-                    r"\binsurance\s+required\s+to\s+film\b": "insurance, if any is required, to film",
-                    r"\bpolicies\s+required\s+to\b": "policies, if any apply, to",
-                    r"\bagreements\s+required\s+before\s+production\b": "agreements, if any apply, before production",
-                }
-                sent_neutralized = sent
-                for k, v in replacements.items():
-                    sent_neutralized = re.sub(k, v, sent_neutralized, flags=re.IGNORECASE)
-                out_sentences.append(sent_neutralized)
-            else:
-                out_sentences.append(sent)
+            s_out = sent
+            
+            s_out = re.sub(r"\bformat\s+can\s+be\s+structured\b", "format whether a format can be structured", s_out, flags=re.IGNORECASE)
+            s_out = re.sub(r"\bdesired\s+access\s+to\s+personnel\s+can\s+be\s+coordinated\b", "unverified desired access to personnel whether coordination", s_out, flags=re.IGNORECASE)
+            s_out = re.sub(r"\bcan\s+be\s+coordinated\b", "whether coordination is possible remains unverified and conditional", s_out, flags=re.IGNORECASE)
+            s_out = re.sub(r"\bcan\s+be\s+structured\b", "remains unverified and conditional", s_out, flags=re.IGNORECASE)
+            
+            if not _is_requirement_evidence_supported(sent, "agreement", ctx):
+                s_out = re.sub(r"\bnecessary\s+third-party\s+agreements\s+required\s+to\s+depict\b", "applicable third-party agreements or permissions, if any apply, to depicting", s_out, flags=re.IGNORECASE)
+                s_out = re.sub(r"\bagreements\s+required\s+to\s+depict\b", "agreements, if any apply, to depicting", s_out, flags=re.IGNORECASE)
+                s_out = re.sub(r"\bto\s+secure\s+cooperative\s+rights\b", "to determine what cooperative rights, if any, apply", s_out, flags=re.IGNORECASE)
                 
+            has_agreement = _is_requirement_evidence_supported(sent, "agreement", ctx)
+            has_clearance = _is_requirement_evidence_supported(sent, "clearance", ctx)
+            if not has_agreement or not has_clearance:
+                s_out = re.sub(r"\bformal\s+access\s+agreements\s+and\s+filing\s+clearances\b", "formal access agreements, if any apply, and filming clearances", s_out, flags=re.IGNORECASE)
+                s_out = re.sub(r"\bformal\s+access\s+agreements\s+and\s+filming\s+clearances\b", "formal access agreements, if any apply, and filming clearances, if any are required,", s_out, flags=re.IGNORECASE)
+                
+            has_insurance = _is_requirement_evidence_supported(sent, "insurance", ctx)
+            has_clearance = _is_requirement_evidence_supported(sent, "clearance", ctx)
+            if not has_insurance or not has_clearance:
+                s_out = re.sub(r"\bregulatory\s+clearances\s+and\s+insurance\s+policies\s+required\b", "regulatory clearances and insurance policies, if any apply,", s_out, flags=re.IGNORECASE)
+                
+            if not _is_requirement_evidence_supported(sent, "clearance", ctx):
+                s_out = re.sub(r"\bclearances\s+required\s+to\s+film\b", "clearances, if any are required, to film", s_out, flags=re.IGNORECASE)
+                
+            if not _is_requirement_evidence_supported(sent, "insurance", ctx):
+                s_out = re.sub(r"\binsurance\s+required\s+to\s+film\b", "insurance, if any is required, to film", s_out, flags=re.IGNORECASE)
+                
+            # 8. Policies required to
+            if not _is_requirement_evidence_supported(sent, "policy", ctx) and not _is_requirement_evidence_supported(sent, "policies", ctx):
+                s_out = re.sub(r"\bpolicies\s+required\s+to\b", "policies, if any apply, to", s_out, flags=re.IGNORECASE)
+                s_out = re.sub(r"\b(?:insurance\s+)?policies\s+(?:are\s+)?required\b", "policies, if any apply, are", s_out, flags=re.IGNORECASE)
+                
+            if not _is_requirement_evidence_supported(sent, "agreement", ctx):
+                s_out = re.sub(r"\bagreements\s+required\s+before\s+production\b", "agreements, if any apply, before production", s_out, flags=re.IGNORECASE)
+                
+            out_sentences.append(s_out)
+            
         out_lines.append(label_part + "".join(out_sentences))
     return "\n".join(out_lines)
 

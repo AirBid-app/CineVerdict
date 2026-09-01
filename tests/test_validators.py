@@ -127,13 +127,39 @@ class TestValidators(unittest.TestCase):
         res5 = neutralize_production_assumptions(text5)
         self.assertIn("agreements, if any apply, before production", res5)
 
-        # Test Supported Case: Grounded factual requirement survives untouched!
+        # Test Supported Case: Grounded factual requirement survives untouched! (Case A / F)
         self._add_event("research_agent", "E1 — Claim: Valid.\nSupporting Excerpt: \"The regulatory clearances and insurance policies are required.\"")
-        
-        # When E1 explicitly contains the requirement words, neutralize_production_assumptions preserves them
         text_supported = "The regulatory clearances and insurance policies required to film proprietary technologies [E1]."
         res_supported = neutralize_production_assumptions(text_supported, self.mock_ctx)
         self.assertEqual(res_supported, text_supported)
+
+        # Test Negated Case: Excerpt says NOT required -> assertion must NOT survive (Case B)
+        self._add_event("research_agent", "E2 — Claim: Optional.\nSupporting Excerpt: \"The regulatory clearances and insurance policies are not required.\"")
+        text_negated = "The regulatory clearances and insurance policies required to film proprietary technologies [E2]."
+        res_negated = neutralize_production_assumptions(text_negated, self.mock_ctx)
+        self.assertIn("regulatory clearances and insurance policies, if any apply,", res_negated)
+
+        # Test Uncertain Case: Excerpt says optional/unverified -> assertion must NOT survive (Case C)
+        self._add_event("research_agent", "E3 — Claim: Optional.\nSupporting Excerpt: \"The insurance policies are completely optional.\"")
+        # Test Uncertain Case: Excerpt says optional/unverified -> assertion must NOT survive (Case C)
+        text_uncertain = "The insurance policies required to film proprietary technologies [E3]."
+        res_uncertain = neutralize_production_assumptions(text_uncertain, self.mock_ctx)
+        self.assertIn("policies, if any apply, to", res_uncertain)
+
+        # Test Mere Topic Mention Case: Excerpt mentions topic but no requirement -> assertion must NOT survive (Case D)
+        self._add_event("research_agent", "E4 — Claim: Info.\nSupporting Excerpt: \"We discuss general insurance policies.\"")
+        text_mention = "The insurance policies required to film proprietary technologies [E4]."
+        res_mention = neutralize_production_assumptions(text_mention, self.mock_ctx)
+        self.assertIn("policies, if any apply, to", res_mention)
+        # Test Multi-Citation / Cross-Leakage Case: E1 has agreement required, but E4 has insurance optional (Case E)
+        # The presence of agreement required in E1 must NOT authorize the unsupported insurance requirement in the same sentence
+        self._add_event("research_agent", "E5 — Claim: Agreement.\nSupporting Excerpt: \"Filming agreements are required.\"")
+        self._add_event("research_agent", "E6 — Claim: Insurance.\nSupporting Excerpt: \"General insurance policies are optional.\"")
+        text_multi = "Filming agreements are required before production [E5] and insurance policies are required [E6]."
+        res_multi = neutralize_production_assumptions(text_multi, self.mock_ctx)
+        # E5 (agreements) is supported -> survives. E6 (insurance) is unsupported/optional -> neutralized!
+        self.assertIn("agreements are required before production", res_multi)
+        self.assertIn("policies, if any apply, are", res_multi)
 
     # ---------------------------------------------------------
     # 7. Market rights/evidence fidelity
